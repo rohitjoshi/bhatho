@@ -1,2 +1,2 @@
-# kanudo
-Kanudo is a High Performance Caching layer with persistance storage
+# bhatho
+bhatho (Rock) is a High Performance Caching layer with persistent storage
