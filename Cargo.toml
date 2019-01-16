@@ -1,0 +1,25 @@
+[package]
+name = "bhatho"
+version = "0.1.0"
+authors = ["Rohit Joshi <rohit.c.joshi@gmail.com>"]
+edition = "2018"
+
+
+
+
+[dependencies]
+log="*"
+serde = "1.0.27"
+serde_derive = "1.0.27"
+serde_json="*"
+crossbeam-channel = "0.3.2"
+lru = { git="https://github.com/jeromefroe/lru-rs", version="*"}
+rand="0.6"
+twox-hash = "1.1.2"
+
+
+
+[dependencies.rocksdb]
+#path="/downloads/rust-rocksdb"
+path="/Users/ytr289/Downloads/rust-rocksdb"
+#version="*"
