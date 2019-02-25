@@ -1,7 +1,14 @@
+/************************************************
+
+   File Name: bhatho:db::config
+   Author: Rohit Joshi <rohit.c.joshi@gmail.com>
+   Date: 2019-02-17:15:15
+   License: Apache 2.0
+
+**************************************************/
 use std::str;
 
 use crate::cache::config::CacheConfig;
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DbManagerConfig {
@@ -51,6 +58,8 @@ pub struct RocksDbConfig {
     pub disable_wal: bool,
     pub bloom_filter: bool,
     pub enable_statistics: bool,
+    pub restore_from_backup_at_startup : bool,
+    pub keep_log_file_while_restore: bool
 }
 
 impl Default for RocksDbConfig {
@@ -80,6 +89,8 @@ impl Default for RocksDbConfig {
             disable_wal: false,
             bloom_filter: false,
             enable_statistics: true,
+            restore_from_backup_at_startup: true,
+            keep_log_file_while_restore: true,
 
         }
     }

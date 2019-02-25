@@ -1,6 +1,13 @@
+/************************************************
+
+   File Name: bhatho:cache::config
+   Author: Rohit Joshi <rohit.c.joshi@gmail.com>
+   Date: 2019-02-17:15:15
+   License: Apache 2.0
+
+**************************************************/
 use std::str;
-use std::str::FromStr;
-use std::collections::HashMap;
+
 
 pub struct CacheManagerConfig {
     pub cache_configs: Vec<CacheConfig>
@@ -29,7 +36,7 @@ impl Default for CacheConfig {
     fn default() -> CacheConfig {
         CacheConfig {
             enabled: true,
-            cache_capacity: 1000000,
+            cache_capacity: 1_000_000,
             num_shards: 1024,
             cache_update_on_db_read: true,
             cache_update_on_db_write: true,

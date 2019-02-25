@@ -16,10 +16,5 @@ crossbeam-channel = "0.3.2"
 lru = { git="https://github.com/jeromefroe/lru-rs", version="*"}
 rand="0.6"
 twox-hash = "1.1.2"
-
-
-
-[dependencies.rocksdb]
-#path="/downloads/rust-rocksdb"
-path="/Users/ytr289/Downloads/rust-rocksdb"
-#version="*"
+regex="*"
+rocksdb = {git="https://github.com/rohitjoshi/rust-rocksdb", version="*"}

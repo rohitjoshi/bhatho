@@ -1,17 +1,24 @@
+/************************************************
+
+   File Name: bhatho:cache::lru_cache
+   Author: Rohit Joshi <rohit.c.joshi@gmail.com>
+   Date: 2019-02-17:15:15
+   License: Apache 2.0
+
+**************************************************/
+use lru::LruCache;
 use std::fs::File;
-use std::hash::Hasher;
+
 use std::io::Write;
 use std::result::Result;
 use std::str;
 use std::sync::{Arc, Mutex};
-
-use lru::LruCache;
 use twox_hash::RandomXxHashBuilder;
 
 use crate::keyval::KeyVal;
-
+type LruCacheVec =  LruCache< Vec<u8>, Vec<u8>, RandomXxHashBuilder>;
 pub struct Lru {
-    cache: Arc<Mutex<LruCache<Vec<u8>, Vec<u8>, RandomXxHashBuilder>>>,
+    cache: Arc<Mutex<LruCacheVec>>,
     cache_capacity: usize,
 
 }
@@ -41,7 +48,7 @@ impl Lru {
         let cache = Arc::new(Mutex::new(LruCache::with_hasher(cache_capacity, hasher)));
         Lru {
             cache,
-            cache_capacity: cache_capacity,
+            cache_capacity,
 
         }
     }
@@ -63,7 +70,7 @@ impl Lru {
         //get from cache first,
         match self.cache.lock().unwrap().get_mut(&key.to_vec()) {
             Some(val) => {
-                return Ok(val.to_vec());
+                Ok(val.to_vec())
             }
             None => Err(String::from("not found")),
         }
@@ -73,7 +80,7 @@ impl Lru {
     pub fn get_str(&self, key: &str) -> Result<String, String> {
         match self.get(key.as_bytes()) {
             Ok(val) => {
-                return Ok(String::from_utf8_lossy(&val).to_string());
+                Ok(String::from_utf8_lossy(&val).to_string())
             }
             Err(e) => Err(e.to_string()),
         }
@@ -104,14 +111,22 @@ impl Lru {
         Ok(())
     }
 
-    pub fn export_keys(&self, file: &mut File) -> Result<(), String> {
+    pub fn export_keys(&self, file: &mut File) -> Result<u64, String> {
         let cache = &self.cache.lock().unwrap();
 
+        let mut total = 0u64;
         for (key, _) in cache.iter() {
-            file.write(key);
-            file.write(b"\r\n");
+            if let Err(e) = file.write(key) {
+                error!("export keys: Failed to write to the file.");
+                return Err(e.to_string());
+            }
+            if let Err(e) = file.write(b"\r\n") {
+                error!("export keys: Failed to write to the file.");
+                return Err(e.to_string());
+            }
+            total += total;
         }
-        Ok(())
+        Ok(total)
     }
 }
 /*

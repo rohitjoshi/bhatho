@@ -1,10 +1,18 @@
-use std::sync::Arc;
+/************************************************
 
+   File Name: bhatho:db::db_manager
+   Author: Rohit Joshi <rohit.c.joshi@gmail.com>
+   Date: 2019-02-17:15:15
+   License: Apache 2.0
+
+**************************************************/
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
+use crate::cache::sharded_cache::ShardedCache;
 use crate::db::config::DbManagerConfig;
 use crate::db::rocks_db::RocksDb;
-use crate::cache::sharded_cache::ShardedCache;
 use crate::keyval::KeyVal;
-use std::collections::HashMap;
 
 /// DbManager
 /// It is a wrapper around multiple database instances
@@ -22,7 +30,7 @@ impl Clone for DbManager {
     #[inline]
     fn clone(&self) -> DbManager {
         DbManager {
-            enabled: self.enabled.clone(),
+            enabled: self.enabled,
             name: self.name.clone(),
             db : self.db.clone(),
             cache : self.cache.clone(),
@@ -34,9 +42,9 @@ impl Clone for DbManager {
 
 impl DbManager {
     /// create a DbManager instance
-    pub fn new(config: &DbManagerConfig) -> Result<DbManager, String> {
+    pub fn new(config: &DbManagerConfig,  shutdown: Arc<AtomicBool>) -> Result<DbManager, String> {
         //RocksDbConfig
-        let db= RocksDb::new(&config.db_config)?;
+        let db= RocksDb::new(&config.db_config, shutdown)?;
         let cache = ShardedCache::new(&config.cache_config);
 
 
@@ -55,35 +63,39 @@ impl DbManager {
 
     /// get key as str
     #[inline]
-    pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn get(&self, key: &[u8]) -> Result<(Vec<u8>, bool), String> {
         if !self.enabled {
             return Err(String::from("DB is not enabled"));
         }
 
         if let Ok(val) = self.cache.get(&key) {
-           return Ok(val);
+           return Ok((val, true));
         }
 
         match self.db.get(key) {
             Ok(value) => {
                 if self.config.cache_config.cache_update_on_db_read {
-                    self.cache.put(&key, &value);
+                    if let Err(e) = self.cache.put(&key, &value){
+                        return Err(e.to_string());
+                    }
                 }
-                Ok(value.to_vec())
+                Ok((value.to_vec(), false))
             }
             Err(e) => Err(e.to_string()),
         }
     }
 
+
+
     /// get key as str
     #[inline]
-    pub fn get_key_val(&self, kv: &KeyVal) -> Result<Vec<u8>, String> {
+    pub fn get_key_val(&self, kv: &KeyVal) -> Result<(Vec<u8>, bool), String> {
         if !self.enabled {
             return Err(String::from("DB is not enabled"));
         }
 
         if let Ok(val) = self.cache.get_key_val(&kv) {
-            return Ok(val);
+            return Ok((val, true));
         }
 
         match self.db.get(&kv.key) {
@@ -91,9 +103,11 @@ impl DbManager {
                 if self.config.cache_config.cache_update_on_db_read {
                     let mut kv = kv.clone();
                     kv.val.extend_from_slice(&value);
-                    self.cache.put_key_val(&kv);
+                    if let Err(e) = self.cache.put_key_val(&kv) {
+                        return Err(e.to_string());
+                    }
                 }
-                Ok(value)
+                Ok((value, false))
             }
             Err(e) => Err(e.to_string()),
         }
@@ -156,7 +170,7 @@ impl DbManager {
         self.db.backup_db()
     }
 
-    pub fn export_lru_keys(&self) -> Result<(), String> {
+    pub fn export_lru_keys(&self) -> Result<u64, String> {
         self.cache.export_keys()
     }
 }

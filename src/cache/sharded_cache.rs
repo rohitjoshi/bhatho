@@ -1,11 +1,17 @@
+/************************************************
+
+   File Name: bhatho:cache::sharded_cache
+   Author: Rohit Joshi <rohit.c.joshi@gmail.com>
+   Date: 2019-02-17:15:15
+   License: Apache 2.0
+
+**************************************************/
 use std::fs::OpenOptions;
-use std::io::Write;
 use std::sync::Arc;
 
 use crate::cache::config::CacheConfig;
 use crate::cache::lru_cache::Lru;
 use crate::keyval::KeyVal;
-
 
 pub struct ShardedCache {
     pub shards: Arc<Vec<Lru>>,
@@ -94,7 +100,9 @@ impl ShardedCache {
             return Err(String::from("Cache is not enabled"));
         }
         for kv in data.iter() {
-            self.shards[self.get_shard_key_val(&kv)].put(&kv.key, &kv.val);
+            if let Err(e) = self.shards[self.get_shard_key_val(&kv)].put(&kv.key, &kv.val) {
+                debug!("Insert failed for the key: {}. Error: {:?}", String::from_utf8_lossy(&kv.key), e);
+            }
         }
         Ok(())
     }
@@ -138,7 +146,7 @@ impl ShardedCache {
         self.shards[self.get_shard(&key)].delete(&key)
     }
 
-    pub fn export_keys(&self) -> Result<(), String> {
+    pub fn export_keys(&self) -> Result<u64, String> {
         warn!("This is a blocking operation");
         info!("Exporting keys from the cache");
         let mut file = match OpenOptions::new().write(true)
@@ -152,12 +160,16 @@ impl ShardedCache {
                 f
             }
         };
-
+        let mut total = 0u64;
         for i in 0..self.shards.len() {
-            self.shards[i].export_keys(&mut file);
+            let count = self.shards[i].export_keys(&mut file)?;
+
+            total += count;
         }
-        file.sync_data();
-        info!("Successfully exported keys from the cache");
-        Ok(())
+        if let Err(e) = file.sync_data() {
+            error!("Failed to execute file sync_data(). Error: {:?}", e);
+        }
+        info!("Successfully exported {} keys from the cache to file {}", total, self.config.keys_dump_file);
+        Ok(total)
     }
 }
