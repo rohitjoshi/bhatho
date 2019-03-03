@@ -7,7 +7,7 @@ description = "LRU Caching library with persistent layer using RocksDB"
 keywords=["LRU", "cache", "rockdb", "persistent", "caching"]
 License="Apache 2.0"
 license-file="LICENSE"
-publish = false
+publish = true
 
 [badges]
 travis-ci = { repository = "https://github.com/rohitjoshi/bhatho", branch = "master" }
@@ -17,10 +17,10 @@ codecov = { repository = "https://github.com/rohitjoshi/bhatho", branch = "maste
 
 
 [dependencies]
-log="*"
+log="0.4.6"
 serde = "1.0.27"
 serde_derive = "1.0.27"
-serde_json="*"
+serde_json="1.0.33"
 crossbeam-channel = "0.3.2"
 #lru = "0.1.11"
 lru = {git="https://github.com/rohitjoshi/lru-rs", version="*"}
@@ -28,5 +28,5 @@ hashbrown = "0.1.8"
 parking_lot = "0.7.1"
 rand="0.6"
 twox-hash = "1.1.2"
-regex="*"
+regex="1.1.0"
 rocksdb = {git="https://github.com/rohitjoshi/rust-rocksdb", version="*"}
