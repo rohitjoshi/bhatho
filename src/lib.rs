@@ -237,7 +237,7 @@ mod tests {
             data.push(kv);
         }
         let conf = BhathoConfig::default();
-        let shutdown=  Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(AtomicBool::new(false));
         let bhatho = Bhatho::new(&conf, shutdown);
         if let Err(e) = bhatho {
             println!("Failed to init db. Error:{:?}", e);
@@ -271,7 +271,7 @@ mod tests {
         let mut conf = BhathoConfig::default();
         conf.db_configs[0].db_config.db_path = "/tmp/bhatho_tmp".to_string();
         conf.db_configs[0].db_config.wal_dir = "/tmp/bhatho_tmp/wal".to_string();
-        let shutdown=  Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(AtomicBool::new(false));
         let bhatho = Bhatho::new(&conf, shutdown);
         if let Err(e) = bhatho {
             println!("Failed to init db. Error:{:?}", e);
@@ -294,8 +294,8 @@ mod tests {
     fn init_db_test() {
         let mut conf = BhathoConfig::default();
 
-        conf.db_configs[0].db_config.restore_from_backup_at_startup= false;
-        let shutdown=  Arc::new(AtomicBool::new(false));
+        conf.db_configs[0].db_config.restore_from_backup_at_startup = false;
+        let shutdown = Arc::new(AtomicBool::new(false));
         let bhatho = Bhatho::new(&conf, shutdown);
         if let Err(e) = bhatho {
             println!("Failed to init db. Error:{:?}", e);
