@@ -1,3 +1,6 @@
 [submodule "lru-rs"]
 	path = lru-rs
 	url = https://github.com/rohitjoshi/lru-rs
+[submodule "rust-rocksdb"]
+	path = rust-rocksdb
+	url = https://github.com/rohitjoshi/rust-rocksdb
