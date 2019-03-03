@@ -6,7 +6,7 @@
    License: Apache 2.0
 
 **************************************************/
-#![feature(test)]
+//#![feature(test)]
 #[macro_use]
 extern crate log;
 #[macro_use]
