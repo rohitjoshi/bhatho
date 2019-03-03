@@ -6,8 +6,8 @@
    License: Apache 2.0
 
 **************************************************/
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 use crate::cache::sharded_cache::ShardedCache;
 use crate::db::config::DbManagerConfig;
@@ -22,7 +22,6 @@ pub struct DbManager {
     db: Arc<RocksDb>,
     cache: Arc<ShardedCache>,
     config: DbManagerConfig,
-
 }
 
 /// Clone the instance
@@ -32,34 +31,28 @@ impl Clone for DbManager {
         DbManager {
             enabled: self.enabled,
             name: self.name.clone(),
-            db : self.db.clone(),
-            cache : self.cache.clone(),
+            db: self.db.clone(),
+            cache: self.cache.clone(),
             config: self.config.clone(),
-
         }
     }
 }
 
 impl DbManager {
     /// create a DbManager instance
-    pub fn new(config: &DbManagerConfig,  shutdown: Arc<AtomicBool>) -> Result<DbManager, String> {
+    pub fn new(config: &DbManagerConfig, shutdown: Arc<AtomicBool>) -> Result<DbManager, String> {
         //RocksDbConfig
-        let db= RocksDb::new(&config.db_config, shutdown)?;
+        let db = RocksDb::new(&config.db_config, shutdown)?;
         let cache = ShardedCache::new(&config.cache_config);
 
-
-
         Ok(DbManager {
-            enabled : config.enabled,
-            name : config.name.clone(),
+            enabled: config.enabled,
+            name: config.name.clone(),
             db: Arc::new(db),
             cache: Arc::new(cache),
             config: config.clone(),
-
         })
     }
-
-
 
     /// get key as str
     #[inline]
@@ -69,13 +62,13 @@ impl DbManager {
         }
 
         if let Ok(val) = self.cache.get(&key) {
-           return Ok((val, true));
+            return Ok((val, true));
         }
 
         match self.db.get(key) {
             Ok(value) => {
                 if self.config.cache_config.cache_update_on_db_read {
-                    if let Err(e) = self.cache.put(&key, &value){
+                    if let Err(e) = self.cache.put(&key, &value) {
                         return Err(e.to_string());
                     }
                 }
@@ -84,8 +77,6 @@ impl DbManager {
             Err(e) => Err(e.to_string()),
         }
     }
-
-
 
     /// get key as str
     #[inline]
@@ -125,7 +116,6 @@ impl DbManager {
             self.cache.put(&key, &val)?;
         }
         Ok(())
-
     }
 
     /// put the key val pair into database
@@ -141,7 +131,6 @@ impl DbManager {
         Ok(())
     }
 
-
     /// delete they key in the db if found
     #[inline]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
@@ -151,7 +140,6 @@ impl DbManager {
         let _ = self.cache.delete(&key);
         self.db.delete(key)
     }
-
 
     /// delete they key in the db if found
     #[inline]

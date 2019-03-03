@@ -6,6 +6,6 @@
    License: Apache 2.0
 
 **************************************************/
-pub mod rocks_db;
-pub mod db_manager;
 pub mod config;
+pub mod db_manager;
+pub mod rocks_db;

@@ -7,15 +7,16 @@
 
 **************************************************/
 use crossbeam_channel as mpsc;
-use rocksdb::{BlockBasedIndexType, BlockBasedOptions, DB as rocks_db, DBCompressionType,
-              SliceTransform, WriteBatch};
 use rocksdb::backup::{BackupEngine, BackupEngineOptions};
 use rocksdb::Options as rocks_options;
+use rocksdb::{
+    BlockBasedIndexType, BlockBasedOptions, DBCompressionType, SliceTransform, WriteBatch,
+    DB as rocks_db,
+};
 
-
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -27,14 +28,11 @@ pub struct RocksDb {
     pub db: Arc<rocks_db>,
     pub sender: mpsc::Sender<KeyVal>,
     pub config: RocksDbConfig,
-
-
 }
 
 //using single thread loop , so it is safe
 //unsafe impl Send for Store {}
 //unsafe impl Sync for Store {}
-
 
 /// Clone the instance
 impl Clone for RocksDb {
@@ -44,25 +42,21 @@ impl Clone for RocksDb {
             db: self.db.clone(),
             sender: self.sender.clone(),
             config: self.config.clone(),
-
-
         }
     }
 }
 
 impl RocksDb {
-
     ///
     /// Create rocks_db_options
     ///
     fn create_rocks_db_options(rocks_config: &RocksDbConfig) -> Result<rocks_options, String> {
-
         let mut opts = rocks_options::default();
         opts.set_max_open_files(rocks_config.max_open_files);
         opts.increase_parallelism(rocks_config.num_threads_parallelism);
         opts.create_if_missing(rocks_config.create_if_missing);
         opts.set_compression_type(DBCompressionType::None); //Lz4
-        //opts.enable_pipelined_write(rocks_config.pipelined_write);
+                                                            //opts.enable_pipelined_write(rocks_config.pipelined_write);
         if rocks_config.enable_statistics {
             opts.enable_statistics();
         }
@@ -95,8 +89,6 @@ impl RocksDb {
         }
 
         Ok(opts)
-
-
     }
     /// initialize rocks db options and create a new db instance
     fn init_rocks_db(rocks_config: &RocksDbConfig) -> Result<rocks_db, String> {
@@ -104,16 +96,13 @@ impl RocksDb {
 
         let opts = RocksDb::create_rocks_db_options(&rocks_config)?;
         match rocks_db::open(&opts, &rocks_config.db_path) {
-            Ok(db) => {
-               Ok(db)
-            }
+            Ok(db) => Ok(db),
             Err(e) => {
                 error!("Failed to open rockdb database. Error:{:?}", e);
-               Err(e.to_string())
+                Err(e.to_string())
             }
         }
     }
-
 
     /// Write to database async
     /// It reads from the channel
@@ -121,7 +110,7 @@ impl RocksDb {
         db_config: RocksDbConfig,
         db: Arc<rocks_db>,
         receiver: mpsc::Receiver<KeyVal>,
-        shutdown: Arc<AtomicBool>
+        shutdown: Arc<AtomicBool>,
     ) {
         loop {
             let data: Vec<KeyVal> = receiver.try_iter().collect();
@@ -170,9 +159,7 @@ impl RocksDb {
     }
 
     /// create a RocksDB instance from the config
-    pub fn new(config: &RocksDbConfig,  shutdown: Arc<AtomicBool>) -> Result<RocksDb, String> {
-
-
+    pub fn new(config: &RocksDbConfig, shutdown: Arc<AtomicBool>) -> Result<RocksDb, String> {
         if config.restore_from_backup_at_startup {
             if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&config) {
                 let mut restore_option = rocksdb::backup::RestoreOptions::default();
@@ -182,7 +169,11 @@ impl RocksDb {
                 if wal_dir.is_empty() {
                     wal_dir = config.db_path.clone();
                 }
-                if let Err(e) = backup_engine.restore_from_latest_backup(&config.db_path, &wal_dir, &restore_option) {
+                if let Err(e) = backup_engine.restore_from_latest_backup(
+                    &config.db_path,
+                    &wal_dir,
+                    &restore_option,
+                ) {
                     error!("Failed to restore from the backup. Error:{:?}", e);
                     return Err(e.to_string());
                 }
@@ -190,14 +181,13 @@ impl RocksDb {
             } else {
 
             }
-        }else {
+        } else {
             info!("Initializing DB from a path: {}", config.db_path);
         }
 
         let db = Arc::new(RocksDb::init_rocks_db(&config)?);
 
         let (tx, rx) = mpsc::unbounded::<KeyVal>();
-
 
         if config.async_write {
             for _i in 0..config.num_async_writer_threads {
@@ -211,7 +201,6 @@ impl RocksDb {
             }
         }
 
-
         Ok(RocksDb {
             db,
             sender: tx,
@@ -221,20 +210,32 @@ impl RocksDb {
 
     fn create_backup_engine(config: &RocksDbConfig) -> Result<BackupEngine, String> {
         if !config.backup_enabled {
-            info!("Backup is not enabled for DB with path: {}. ", config.backup_path);
-            return Err("Backup is not enabled.".to_string())
-        }else if config.backup_path.is_empty(){
-            error!("Backup path: {} is empty. Not enabling backup engine", config.backup_path);
-            return Err("Backup path is empty. Not enabling backup engine".to_string())
+            info!(
+                "Backup is not enabled for DB with path: {}. ",
+                config.backup_path
+            );
+            return Err("Backup is not enabled.".to_string());
+        } else if config.backup_path.is_empty() {
+            error!(
+                "Backup path: {} is empty. Not enabling backup engine",
+                config.backup_path
+            );
+            return Err("Backup path is empty. Not enabling backup engine".to_string());
         }
         let backup_opts = BackupEngineOptions::default();
         match BackupEngine::open(&backup_opts, &config.backup_path) {
             Err(e) => {
-                error!("Failed to open backup engine for path: {}. Error:{:?}", config.backup_path, e);
+                error!(
+                    "Failed to open backup engine for path: {}. Error:{:?}",
+                    config.backup_path, e
+                );
                 Err(e.to_string())
             }
             Ok(backup_engine) => {
-                info!("Successfully opened backup engine for path: {}", config.backup_path);
+                info!(
+                    "Successfully opened backup engine for path: {}",
+                    config.backup_path
+                );
                 Ok(backup_engine)
             }
         }
@@ -244,9 +245,7 @@ impl RocksDb {
     #[inline]
     pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
         match self.db.get(key) {
-            Ok(Some(value)) => {
-                Ok(value.to_vec())
-            }
+            Ok(Some(value)) => Ok(value.to_vec()),
             Ok(None) => Err(String::from("not found")),
             Err(e) => Err(e.to_string()),
         }
@@ -280,21 +279,16 @@ impl RocksDb {
     fn put_key_val_async(&self, key_val: &KeyVal) -> Result<(), String> {
         match self.sender.send(key_val.clone()) {
             Ok(_) => Ok(()),
-            Err(e) => {
-                Err(e.to_string())
-            }
+            Err(e) => Err(e.to_string()),
         }
     }
-
 
     #[inline]
     fn put_async(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
         let key_val = KeyVal::new(&key, &val);
         match self.sender.send(key_val) {
             Ok(_) => Ok(()),
-            Err(e) => {
-                Err(e.to_string())
-            }
+            Err(e) => Err(e.to_string()),
         }
     }
 
@@ -307,51 +301,54 @@ impl RocksDb {
     }
 
     pub fn backup_db(&self) -> Result<(), String> {
-
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
-
             if let Err(e) = backup_engine.create_new_backup(&self.db) {
-                error!("Failed to purge old backups for DB with path: {}. Error:{:?}", self.config.backup_path, e);
+                error!(
+                    "Failed to purge old backups for DB with path: {}. Error:{:?}",
+                    self.config.backup_path, e
+                );
                 return Err(e.to_string());
             }
-            info!("Purged old backup for DB Path: {},  Backup Path: {}.",
-                  self.config.db_path, self.config.backup_path);
+            info!(
+                "Purged old backup for DB Path: {},  Backup Path: {}.",
+                self.config.db_path, self.config.backup_path
+            );
             Ok(())
 
-            /*let res = self.backup_engine.map(|mut be| {
-                if let Err(e) = be.create_new_backup(&self.db) {
-                    {
-                        error!("Failed to create a new backup using path: {}. Error:{:?}", self.config.backup_path, e);
-                        return Err(e.to_string());
-                    }
-                }else {
-                    info!("Backup completed. DB Path: {},  Backup Path: {}",
-                          self.config.db_path, self.config.backup_path);
-                    return Ok(());
+        /*let res = self.backup_engine.map(|mut be| {
+            if let Err(e) = be.create_new_backup(&self.db) {
+                {
+                    error!("Failed to create a new backup using path: {}. Error:{:?}", self.config.backup_path, e);
+                    return Err(e.to_string());
                 }
-            });
-            res.unwrap()*/
-
-        }else {
+            }else {
+                info!("Backup completed. DB Path: {},  Backup Path: {}",
+                      self.config.db_path, self.config.backup_path);
+                return Ok(());
+            }
+        });
+        res.unwrap()*/
+        } else {
             Err("Backup Engine was not initialized".to_string())
         }
-
     }
 
-    pub fn purge_old_backup(&self, num_backups_to_keep: usize) -> Result<(), String>{
-
+    pub fn purge_old_backup(&self, num_backups_to_keep: usize) -> Result<(), String> {
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
-
             if let Err(e) = backup_engine.purge_old_backups(num_backups_to_keep) {
-                error!("Failed to purge old backups for DB with path: {}. Error:{:?}", self.config.backup_path, e);
+                error!(
+                    "Failed to purge old backups for DB with path: {}. Error:{:?}",
+                    self.config.backup_path, e
+                );
                 return Err(e.to_string());
             }
-            info!("Purged old backup for DB Path: {},  Backup Path: {}.",
-                  self.config.db_path, self.config.backup_path);
+            info!(
+                "Purged old backup for DB Path: {},  Backup Path: {}.",
+                self.config.db_path, self.config.backup_path
+            );
             Ok(())
-        }else {
+        } else {
             Err("Backup Engine was not initialized".to_string())
         }
     }
 }
-

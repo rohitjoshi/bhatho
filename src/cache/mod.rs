@@ -6,6 +6,6 @@
    License: Apache 2.0
 
 **************************************************/
+pub mod config;
 pub mod lru_cache;
 pub mod sharded_cache;
-pub mod config;

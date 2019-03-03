@@ -9,19 +9,18 @@
 use lru::LruCache;
 use std::fs::File;
 
+use parking_lot::Mutex;
 use std::io::Write;
 use std::result::Result;
 use std::str;
 use std::sync::Arc;
 use twox_hash::RandomXxHashBuilder;
-use parking_lot::Mutex;
 
 use crate::keyval::KeyVal;
-type LruCacheVec =  LruCache< Vec<u8>, Vec<u8>, RandomXxHashBuilder>;
+type LruCacheVec = LruCache<Vec<u8>, Vec<u8>, RandomXxHashBuilder>;
 pub struct Lru {
     cache: Arc<Mutex<LruCacheVec>>,
     cache_capacity: usize,
-
 }
 
 /// send safe
@@ -36,7 +35,6 @@ impl Clone for Lru {
         Lru {
             cache: self.cache.clone(),
             cache_capacity: self.cache_capacity,
-
         }
     }
 }
@@ -50,7 +48,6 @@ impl Lru {
         Lru {
             cache,
             cache_capacity,
-
         }
     }
     /// put key as str
@@ -64,15 +61,12 @@ impl Lru {
         Ok(())
     }
 
-
     /// get key as str
     #[inline]
     pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
         //get from cache first,
         match self.cache.lock().get_mut(&key.to_vec()) {
-            Some(val) => {
-                Ok(val.to_vec())
-            }
+            Some(val) => Ok(val.to_vec()),
             None => Err(String::from("not found")),
         }
     }
@@ -80,9 +74,7 @@ impl Lru {
     #[inline]
     pub fn get_str(&self, key: &str) -> Result<String, String> {
         match self.get(key.as_bytes()) {
-            Ok(val) => {
-                Ok(String::from_utf8_lossy(&val).to_string())
-            }
+            Ok(val) => Ok(String::from_utf8_lossy(&val).to_string()),
             Err(e) => Err(e.to_string()),
         }
     }

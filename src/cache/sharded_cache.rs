@@ -27,7 +27,6 @@ impl Clone for ShardedCache {
         ShardedCache {
             shards: self.shards.clone(),
             config: self.config.clone(),
-
         }
     }
 }
@@ -55,7 +54,6 @@ impl ShardedCache {
         let total: u64 = hasher.finish();
         ((total % num_shards as u64) as usize)
     }*/
-
 
     ///
     /// get shard logic is simple. mod of hash code with number of db instances.
@@ -87,7 +85,6 @@ impl ShardedCache {
             }
         }
 
-
         ShardedCache {
             shards: Arc::new(shards),
             config: config.clone(),
@@ -101,7 +98,11 @@ impl ShardedCache {
         }
         for kv in data.iter() {
             if let Err(e) = self.shards[self.get_shard_key_val(&kv)].put(&kv.key, &kv.val) {
-                debug!("Insert failed for the key: {}. Error: {:?}", String::from_utf8_lossy(&kv.key), e);
+                debug!(
+                    "Insert failed for the key: {}. Error: {:?}",
+                    String::from_utf8_lossy(&kv.key),
+                    e
+                );
             }
         }
         Ok(())
@@ -149,14 +150,23 @@ impl ShardedCache {
     pub fn export_keys(&self) -> Result<u64, String> {
         warn!("This is a blocking operation");
         info!("Exporting keys from the cache");
-        let mut file = match OpenOptions::new().write(true)
-            .create(true).open(self.config.keys_dump_file.as_str()) {
+        let mut file = match OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(self.config.keys_dump_file.as_str())
+        {
             Err(e) => {
-                error!("Failed to open file :{} for exporting keys. Error:{:?}", self.config.keys_dump_file, e);
+                error!(
+                    "Failed to open file :{} for exporting keys. Error:{:?}",
+                    self.config.keys_dump_file, e
+                );
                 return Err(e.to_string());
             }
             Ok(f) => {
-                info!("Successfully opened file: {} for exporting keys", self.config.keys_dump_file);
+                info!(
+                    "Successfully opened file: {} for exporting keys",
+                    self.config.keys_dump_file
+                );
                 f
             }
         };
@@ -169,7 +179,10 @@ impl ShardedCache {
         if let Err(e) = file.sync_data() {
             error!("Failed to execute file sync_data(). Error: {:?}", e);
         }
-        info!("Successfully exported {} keys from the cache to file {}", total, self.config.keys_dump_file);
+        info!(
+            "Successfully exported {} keys from the cache to file {}",
+            total, self.config.keys_dump_file
+        );
         Ok(total)
     }
 }

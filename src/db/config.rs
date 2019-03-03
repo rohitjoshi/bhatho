@@ -26,14 +26,13 @@ impl Default for DbManagerConfig {
             enabled: true,
             name: "".to_string(),
             db_config,
-            cache_config
+            cache_config,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RocksDbConfig {
-
     pub enabled: bool,
     pub async_write: bool,
     pub num_async_writer_threads: usize,
@@ -58,8 +57,8 @@ pub struct RocksDbConfig {
     pub disable_wal: bool,
     pub bloom_filter: bool,
     pub enable_statistics: bool,
-    pub restore_from_backup_at_startup : bool,
-    pub keep_log_file_while_restore: bool
+    pub restore_from_backup_at_startup: bool,
+    pub keep_log_file_while_restore: bool,
 }
 
 impl Default for RocksDbConfig {
@@ -91,7 +90,6 @@ impl Default for RocksDbConfig {
             enable_statistics: true,
             restore_from_backup_at_startup: true,
             keep_log_file_while_restore: true,
-
         }
     }
 }

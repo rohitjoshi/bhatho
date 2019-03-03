@@ -8,17 +8,14 @@
 **************************************************/
 use std::str;
 
-
 pub struct CacheManagerConfig {
-    pub cache_configs: Vec<CacheConfig>
+    pub cache_configs: Vec<CacheConfig>,
 }
 impl Default for CacheManagerConfig {
     fn default() -> CacheManagerConfig {
         let mut cache_configs = Vec::with_capacity(1);
         cache_configs.push(CacheConfig::default());
-        CacheManagerConfig {
-            cache_configs
-        }
+        CacheManagerConfig { cache_configs }
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,7 +26,6 @@ pub struct CacheConfig {
     pub cache_update_on_db_read: bool,
     pub cache_update_on_db_write: bool,
     pub keys_dump_file: String,
-
 }
 
 impl Default for CacheConfig {
