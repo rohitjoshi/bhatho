@@ -3,6 +3,15 @@ name = "bhatho"
 version = "0.1.0"
 authors = ["Rohit Joshi <rohit.c.joshi@gmail.com>"]
 edition = "2018"
+description = "LRU Caching library with persistent layer using RocksDB"
+keywords=["LRU", "cache", "rockdb", "persistent", "caching"]
+License="Apache 2.0"
+license-file="LICENSE"
+publish = false
+
+[badges]
+travis-ci = { repository = "https://github.com/rohitjoshi/bhatho", branch = "master" }
+codecov = { repository = "https://github.com/rohitjoshi/bhatho", branch = "master", service = "github" }
 
 
 
