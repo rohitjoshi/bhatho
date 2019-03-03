@@ -13,7 +13,7 @@ use rocksdb::backup::{BackupEngine, BackupEngineOptions};
 use rocksdb::Options as rocks_options;
 
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::thread;

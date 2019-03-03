@@ -12,8 +12,9 @@ use std::fs::File;
 use std::io::Write;
 use std::result::Result;
 use std::str;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use twox_hash::RandomXxHashBuilder;
+use parking_lot::Mutex;
 
 use crate::keyval::KeyVal;
 type LruCacheVec =  LruCache< Vec<u8>, Vec<u8>, RandomXxHashBuilder>;
@@ -45,7 +46,7 @@ impl Lru {
     /// make sure path is valid
     pub fn new(cache_capacity: usize) -> Lru {
         let hasher = RandomXxHashBuilder::default();
-        let cache = Arc::new(Mutex::new(LruCache::with_hasher(cache_capacity, hasher)));
+        let cache = Arc::new(Mutex::new(LruCacheVec::with_hasher(cache_capacity, hasher)));
         Lru {
             cache,
             cache_capacity,
@@ -55,7 +56,7 @@ impl Lru {
     /// put key as str
     #[inline]
     pub fn batch_put(&self, data: &[KeyVal]) -> Result<(), String> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock();
         for kv in data.iter() {
             cache.put(kv.key.clone(), kv.val.clone());
         }
@@ -68,7 +69,7 @@ impl Lru {
     #[inline]
     pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
         //get from cache first,
-        match self.cache.lock().unwrap().get_mut(&key.to_vec()) {
+        match self.cache.lock().get_mut(&key.to_vec()) {
             Some(val) => {
                 Ok(val.to_vec())
             }
@@ -95,10 +96,10 @@ impl Lru {
     /// put key as str
     #[inline]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
-        self.cache.lock().unwrap().put(key.to_vec(), val.to_vec());
+        self.cache.lock().put(key.to_vec(), val.to_vec());
         Ok(())
         /*
-        match self.cache.lock().unwrap().put(String::from_utf8(key.to_vec()).unwrap(), val.to_vec()) {
+        match self.cache.lock().put(String::from_utf8(key.to_vec()).unwrap(), val.to_vec()) {
             Some(_r) => Ok(()), /*returns existing entry*/
         None => Ok(()),  /* new entry inserted successfully */
         }*/
@@ -106,13 +107,13 @@ impl Lru {
     /// delete key
     #[inline]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
-        self.cache.lock().unwrap().pop(&key.to_vec());
-        //self.cache.lock().unwrap().remove(&key.to_owned());
+        self.cache.lock().pop(&key.to_vec());
+        //self.cache.lock().remove(&key.to_owned());
         Ok(())
     }
 
     pub fn export_keys(&self, file: &mut File) -> Result<u64, String> {
-        let cache = &self.cache.lock().unwrap();
+        let cache = &self.cache.lock();
 
         let mut total = 0u64;
         for (key, _) in cache.iter() {
