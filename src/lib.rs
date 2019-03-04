@@ -6,6 +6,7 @@
    License: Apache 2.0
 
 **************************************************/
+#![feature(test)]
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -204,8 +205,8 @@ impl Bhatho {
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
 
+    extern crate test;
     use std::collections::HashMap;
     use std::hash::Hasher;
     use std::thread;

@@ -6,10 +6,10 @@ matrix:
   fast_finish: true
   include:
     - env:
-        - NAME="stable"
+        - NAME="nightly"
         # Link dead code to improve code coverage.
         - RUSTFLAGS="-C link-dead-code"
-      rust: stable
+      rust: nightly
       # Required for code coverage, see Travis issue #9601.
       sudo: required
       addons:
