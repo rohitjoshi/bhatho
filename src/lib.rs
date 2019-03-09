@@ -6,7 +6,7 @@
    License: Apache 2.0
 
 **************************************************/
-#![feature(test)]
+//#![feature(test)]
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -187,16 +187,20 @@ impl Bhatho {
         info!("Taking a backup.  might take a while. Make sure instance remains up.");
 
         for db in self.dbs.iter() {
-            if !db_name.is_empty() {
-                if db.name.as_bytes() == db_name {
+            if db.enabled {
+                if !db_name.is_empty() {
+                    if db.name.as_bytes() == db_name {
+                        info!("Taking back for db: {}", db.name);
+                        db.backup_db()?;
+                    }
+                } else {
                     info!("Taking back for db: {}", db.name);
                     db.backup_db()?;
                 }
-            } else {
-                info!("Taking back for db: {}", db.name);
-                db.backup_db()?;
+                info!("Backup completed for db: {}", db.name);
+            }else {
+                info!("Backup not enabled for db: {}", db.name);
             }
-            info!("Backup completed for db: {}", db.name);
         }
         info!("DB Backup completed");
         Ok(())

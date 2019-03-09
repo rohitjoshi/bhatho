@@ -25,6 +25,7 @@ pub struct CacheConfig {
     pub num_shards: usize,
     pub cache_update_on_db_read: bool,
     pub cache_update_on_db_write: bool,
+    pub keys_dump_enabled: bool,
     pub keys_dump_file: String,
 }
 
@@ -36,6 +37,7 @@ impl Default for CacheConfig {
             num_shards: 1024,
             cache_update_on_db_read: true,
             cache_update_on_db_write: true,
+            keys_dump_enabled : true,
             keys_dump_file: "/tmp/kanudo_lru_keys.dump".to_string(),
         }
     }

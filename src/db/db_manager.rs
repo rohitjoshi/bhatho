@@ -153,12 +153,15 @@ impl DbManager {
 
     pub fn backup_db(&self) -> Result<(), String> {
         if !self.enabled {
-            return Err(format!("DB backup  is not enabled for DB: {}", self.name));
+            return Err(format!("DB  is not enabled for DB: {}", self.name));
         }
         self.db.backup_db()
     }
 
     pub fn export_lru_keys(&self) -> Result<u64, String> {
+        if !self.enabled {
+            return Err(format!("DB is not enabled for DB: {}", self.name));
+        }
         self.cache.export_keys()
     }
 }
