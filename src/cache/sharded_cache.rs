@@ -59,15 +59,17 @@ impl ShardedCache {
     /// get shard logic is simple. mod of hash code with number of db instances.
     /// in future, we can improve by different criteria
     /// e.g Key suffix or prefix
+    #[inline(always)]
     fn get_shard(&self, key: &[u8]) -> usize {
         KeyVal::get_hash_code(&key) as usize % self.config.num_shards
     }
 
+    #[inline(always)]
     fn get_shard_key_val(&self, key_val: &KeyVal) -> usize {
         key_val.hash as usize % self.config.num_shards
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn enabled(&self) -> bool {
         self.config.enabled
     }
@@ -108,19 +110,21 @@ impl ShardedCache {
         Ok(())
     }
     #[inline]
-    pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+            return None;
         }
-        self.shards[self.get_shard(&key)].get(&key)
+        let shard = self.get_shard(&key);
+        self.shards[shard].get(&key)
     }
 
     #[inline]
-    pub fn get_key_val(&self, kv: &KeyVal) -> Result<Vec<u8>, String> {
+    pub fn get_key_val(&self, kv: &KeyVal) -> Option<Vec<u8>> {
         if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+            return None;
         }
-        self.shards[self.get_shard_key_val(&kv)].get(&kv.key)
+        let shard = self.get_shard_key_val(&kv);
+        self.shards[shard].get(&kv.key)
     }
 
     #[inline]
@@ -128,15 +132,17 @@ impl ShardedCache {
         if !self.config.enabled {
             return Err(String::from("Cache is not enabled"));
         }
-        self.shards[self.get_shard(&key)].put(&key, &val)
+        let shard = self.get_shard(&key);
+        self.shards[shard].put(&key, &val)
     }
 
     #[inline]
-    pub fn put_key_val(&self, kv: &KeyVal) -> Result<(), String> {
+    pub fn put_key_val(&self, kv: &KeyVal,  val: &[u8]) -> Result<(), String> {
         if !self.config.enabled {
             return Err(String::from("Cache is not enabled"));
         }
-        self.shards[self.get_shard_key_val(&kv)].put(&kv.key, &kv.val)
+        let shard = self.get_shard_key_val(&kv);
+        self.shards[shard].put(&kv.key, &val)
     }
 
     #[inline]
@@ -144,10 +150,19 @@ impl ShardedCache {
         if !self.config.enabled {
             return Err(String::from("Cache is not enabled"));
         }
-        self.shards[self.get_shard(&key)].delete(&key)
+        let shard = self.get_shard(&key);
+        self.shards[shard].delete(&key)
     }
 
     pub fn export_keys(&self) -> Result<u64, String> {
+        if !self.config.enabled {
+            return Err(String::from("Cache is not enabled"));
+        }
+
+        if !self.config.keys_dump_enabled {
+            info!("Exporting lru keys not enabled for export key file :{}", self.config.keys_dump_file);
+            return Err("Exporting lru keys not enabled".to_string());
+        }
         warn!("This is a blocking operation");
         info!("Exporting keys from the cache");
         let mut file = match OpenOptions::new()
@@ -157,7 +172,7 @@ impl ShardedCache {
         {
             Err(e) => {
                 error!(
-                    "Failed to open file :{} for exporting keys. Error:{:?}",
+                    "Failed to open file: {} for exporting keys. Error:{:?}",
                     self.config.keys_dump_file, e
                 );
                 return Err(e.to_string());

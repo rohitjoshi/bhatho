@@ -17,7 +17,6 @@ use regex::Regex;
 use std::str;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-
 use crate::db::config::DbManagerConfig;
 use crate::db::db_manager::DbManager;
 use crate::keyval::KeyVal;
@@ -69,6 +68,9 @@ pub struct Bhatho {
     regexs: Vec<(String, Regex)>,
 }
 
+unsafe impl Send for Bhatho {}
+unsafe impl Sync for Bhatho {}
+
 impl Clone for Bhatho {
     #[inline]
     fn clone(&self) -> Bhatho {
@@ -84,6 +86,7 @@ impl Bhatho {
     ///
     /// extract table name from key
     ///
+    #[inline(always)]
     fn extract_table_name_from_key(&self, kv: &KeyVal) -> Result<String, String> {
         if self.config.db_name_extractor_from_key.enabled
             && (kv.db_name.is_empty() || self.config.db_name_extractor_from_key.override_nonempty)
@@ -105,10 +108,13 @@ impl Bhatho {
     /// e.g Key suffix or prefix
     /// TODO: might want to convert into more efficient lookup compared to string compared
     /// may be hash table
+    #[inline(always)]
     fn get_shard(&self, kv: &KeyVal) -> usize {
         let mut db_name = kv.db_name.clone();
-        if let Ok(name) = self.extract_table_name_from_key(&kv) {
-            db_name = name.as_bytes().to_vec();
+        if self.config.db_name_extractor_from_key.enabled {
+            if let Ok(name) = self.extract_table_name_from_key(&kv) {
+                db_name = name.as_bytes().to_vec();
+            }
         }
         if !db_name.is_empty() {
             for i in 0..self.dbs.len() {
@@ -146,20 +152,26 @@ impl Bhatho {
 
     ///
     /// get the value for a given key
-    pub fn get(&self, kv: &KeyVal) -> Result<(Vec<u8>, bool), String> {
-        self.dbs[self.get_shard(&kv)].get_key_val(&kv)
+    #[inline(always)]
+    pub fn get(&self, kv: &KeyVal) -> Result<Option<(Vec<u8>, bool)>, String> {
+        let shard = self.get_shard(&kv);
+        self.dbs[shard].get_key_val(&kv)
     }
 
     ///
     /// put the key, val pair to DB and Lru Cache
+    #[inline(always)]
     pub fn put(&self, kv: &KeyVal) -> Result<(), String> {
-        self.dbs[self.get_shard(&kv)].put_key_val(&kv)
+        let shard = self.get_shard(&kv);
+        self.dbs[shard].put_key_val(&kv)
     }
 
     ///
     /// delete the key-val pair from db and lru cache for a given key
+    #[inline(always)]
     pub fn delete(&self, kv: &KeyVal) -> Result<(), String> {
-        self.dbs[self.get_shard(&kv)].delete_key_val(&kv)
+        let shard = self.get_shard(&kv);
+        self.dbs[shard].delete_key_val(&kv)
     }
 
     ///

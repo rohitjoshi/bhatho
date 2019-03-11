@@ -10,7 +10,7 @@ use crossbeam_channel as mpsc;
 use rocksdb::backup::{BackupEngine, BackupEngineOptions};
 use rocksdb::Options as rocks_options;
 use rocksdb::{
-    BlockBasedIndexType, BlockBasedOptions, DBCompressionType, SliceTransform, WriteBatch,
+    BlockBasedIndexType,DBCompactionStyle,  BlockBasedOptions, DBCompressionType, SliceTransform, WriteBatch,
     DB as rocks_db,
 };
 
@@ -52,11 +52,20 @@ impl RocksDb {
     ///
     fn create_rocks_db_options(rocks_config: &RocksDbConfig) -> Result<rocks_options, String> {
         let mut opts = rocks_options::default();
+        opts.set_bytes_per_sync(1024*1024);
+        opts.set_use_fsync(false);
+        opts.optimize_for_point_lookup(1024);
+        opts.set_target_file_size_base(128 * 1024 * 1024);
+        opts.set_min_write_buffer_number_to_merge(4);
+        opts.set_level_zero_stop_writes_trigger(2000);
+        opts.set_level_zero_slowdown_writes_trigger(0);
+        opts.set_compaction_style(DBCompactionStyle::Universal);
+
         opts.set_max_open_files(rocks_config.max_open_files);
         opts.increase_parallelism(rocks_config.num_threads_parallelism);
         opts.create_if_missing(rocks_config.create_if_missing);
         opts.set_compression_type(DBCompressionType::None); //Lz4
-                                                            //opts.enable_pipelined_write(rocks_config.pipelined_write);
+        //opts.enable_pipelined_write(rocks_config.pipelined_write);
         if rocks_config.enable_statistics {
             opts.enable_statistics();
         }
@@ -67,23 +76,24 @@ impl RocksDb {
         opts.set_max_background_flushes(rocks_config.max_background_flushes);
         // opts.set_allow_os_buffer(false);
         opts.set_allow_concurrent_memtable_write(true);
+        opts.set_table_cache_num_shard_bits(rocks_config.num_shard_bits);
+
+        let mut block_opts = BlockBasedOptions::default();
+        block_opts.set_block_size(rocks_config.block_size);
+        let prefix_extractor = SliceTransform::create_fixed_prefix(3);
+        opts.set_prefix_extractor(prefix_extractor);
+        block_opts.set_index_type(BlockBasedIndexType::HashSearch);
+
+        block_opts.set_cache_index_and_filter_blocks(true);
+        if rocks_config.bloom_filter {
+            block_opts.set_bloom_filter(10, true);
+        }
+        opts.set_block_based_table_factory(&block_opts);
 
         if rocks_config.lru_cache_size_mb > 0 {
-            opts.set_table_cache_num_shard_bits(rocks_config.num_shard_bits);
-            let mut block_opts = BlockBasedOptions::default();
-            block_opts.set_block_size(rocks_config.block_size);
-            let prefix_extractor = SliceTransform::create_fixed_prefix(3);
-            opts.set_prefix_extractor(prefix_extractor);
-            block_opts.set_index_type(BlockBasedIndexType::HashSearch);
-
             block_opts.set_lru_cache(rocks_config.lru_cache_size_mb * 1024 * 1024); //1GB:  In prod, it should be 64GB
-            block_opts.set_cache_index_and_filter_blocks(true);
-            if rocks_config.bloom_filter {
-                block_opts.set_bloom_filter(10, true);
-            }
-
-            opts.set_block_based_table_factory(&block_opts);
         }
+
         if !rocks_config.wal_dir.is_empty() {
             opts.set_wal_dir(&rocks_config.wal_dir);
         }
@@ -243,10 +253,10 @@ impl RocksDb {
 
     /// get key as str
     #[inline]
-    pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
         match self.db.get(key) {
-            Ok(Some(value)) => Ok(value.to_vec()),
-            Ok(None) => Err(String::from("not found")),
+            Ok(Some(value)) => Ok(Some(value.to_vec())),
+            Ok(None) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }

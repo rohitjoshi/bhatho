@@ -24,6 +24,9 @@ pub struct DbManager {
     config: DbManagerConfig,
 }
 
+unsafe impl Send for DbManager {}
+unsafe impl Sync for DbManager {}
+
 /// Clone the instance
 impl Clone for DbManager {
     #[inline]
@@ -56,50 +59,46 @@ impl DbManager {
 
     /// get key as str
     #[inline]
-    pub fn get(&self, key: &[u8]) -> Result<(Vec<u8>, bool), String> {
+    pub fn get(&self, key: &[u8]) -> Result<Option<(Vec<u8>, bool)>, String> {
         if !self.enabled {
-            return Err(String::from("DB is not enabled"));
+            return Ok(None);
         }
 
-        if let Ok(val) = self.cache.get(&key) {
-            return Ok((val, true));
+        if let Some(val) = self.cache.get(&key) {
+            return Ok(Some((val, true)));
         }
 
         match self.db.get(key) {
-            Ok(value) => {
+            Ok(Some(value)) => {
                 if self.config.cache_config.cache_update_on_db_read {
-                    if let Err(e) = self.cache.put(&key, &value) {
-                        return Err(e.to_string());
-                    }
+                    let _ = self.cache.put(&key, &value);
                 }
-                Ok((value.to_vec(), false))
+                Ok(Some((value, false)))
             }
+            Ok(None) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }
 
     /// get key as str
     #[inline]
-    pub fn get_key_val(&self, kv: &KeyVal) -> Result<(Vec<u8>, bool), String> {
+    pub fn get_key_val(&self, kv: &KeyVal) -> Result<Option<(Vec<u8>, bool)>, String> {
         if !self.enabled {
-            return Err(String::from("DB is not enabled"));
+            return Ok(None);
         }
 
-        if let Ok(val) = self.cache.get_key_val(&kv) {
-            return Ok((val, true));
+        if let Some(val)   = self.cache.get_key_val(&kv) {
+            return Ok(Some((val, true)));
         }
 
         match self.db.get(&kv.key) {
-            Ok(value) => {
+            Ok(Some(value)) => {
                 if self.config.cache_config.cache_update_on_db_read {
-                    let mut kv = kv.clone();
-                    kv.val.extend_from_slice(&value);
-                    if let Err(e) = self.cache.put_key_val(&kv) {
-                        return Err(e.to_string());
-                    }
+                     let _ = self.cache.put_key_val(&kv, &value);
                 }
-                Ok((value, false))
+                Ok(Some((value, false)))
             }
+            Ok(None) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }
@@ -126,7 +125,7 @@ impl DbManager {
         }
         self.put(&kv.key, &kv.val)?;
         if self.config.cache_config.cache_update_on_db_write {
-            self.cache.put_key_val(&kv)?;
+            self.cache.put_key_val(&kv, &kv.val)?;
         }
         Ok(())
     }

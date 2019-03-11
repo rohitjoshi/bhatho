@@ -97,7 +97,7 @@ impl KeyVal {
             skip_cache: false,
         }
     }
-
+    #[inline]
     pub fn get_hash_code(key: &[u8]) -> u64 {
         let mut hasher = XxHash::with_seed(0);
         hasher.write(&key);

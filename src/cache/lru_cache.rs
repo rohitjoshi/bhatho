@@ -51,7 +51,7 @@ impl Lru {
         }
     }
     /// put key as str
-    #[inline]
+    #[inline(always)]
     pub fn batch_put(&self, data: &[KeyVal]) -> Result<(), String> {
         let mut cache = self.cache.lock();
         for kv in data.iter() {
@@ -62,31 +62,32 @@ impl Lru {
     }
 
     /// get key as str
-    #[inline]
-    pub fn get(&self, key: &[u8]) -> Result<Vec<u8>, String> {
+    #[inline(always)]
+    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         //get from cache first,
+        //self.cache.lock().get_mut(&key.to_vec())
         match self.cache.lock().get_mut(&key.to_vec()) {
-            Some(val) => Ok(val.to_vec()),
-            None => Err(String::from("not found")),
+            Some(val) => Some(val.to_vec()),
+            None => None
         }
     }
     /// get key as str (wrapper function)
-    #[inline]
-    pub fn get_str(&self, key: &str) -> Result<String, String> {
+    #[inline(always)]
+    pub fn get_str(&self, key: &str) -> Option<String> {
         match self.get(key.as_bytes()) {
-            Ok(val) => Ok(String::from_utf8_lossy(&val).to_string()),
-            Err(e) => Err(e.to_string()),
+            Some(val) => Some(String::from_utf8_lossy(&val).to_string()),
+            None => None
         }
     }
 
     /// put key as str
-    #[inline]
+    #[inline(always)]
     pub fn put_str(&self, key: &str, val: &str) -> Result<(), String> {
         self.put(key.as_bytes(), val.as_bytes())
     }
 
     /// put key as str
-    #[inline]
+    #[inline(always)]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
         self.cache.lock().put(key.to_vec(), val.to_vec());
         Ok(())
@@ -97,7 +98,7 @@ impl Lru {
         }*/
     }
     /// delete key
-    #[inline]
+    #[inline(always)]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
         self.cache.lock().pop(&key.to_vec());
         //self.cache.lock().remove(&key.to_owned());
@@ -117,7 +118,7 @@ impl Lru {
                 error!("export keys: Failed to write to the file.");
                 return Err(e.to_string());
             }
-            total += total;
+            total += 1;
         }
         Ok(total)
     }
