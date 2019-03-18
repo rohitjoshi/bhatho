@@ -25,6 +25,7 @@ use crate::keyval::KeyVal;
 
 //TODO Add support for column family
 pub struct RocksDb {
+    pub enabled: bool,
     pub db: Arc<rocks_db>,
     pub sender: mpsc::Sender<KeyVal>,
     pub config: RocksDbConfig,
@@ -39,6 +40,7 @@ impl Clone for RocksDb {
     #[inline]
     fn clone(&self) -> RocksDb {
         RocksDb {
+            enabled: self.enabled,
             db: self.db.clone(),
             sender: self.sender.clone(),
             config: self.config.clone(),
@@ -47,6 +49,8 @@ impl Clone for RocksDb {
 }
 
 impl RocksDb {
+    ///mpsc channel size
+    const ASYNC_CHANNEL_BUFFER_SIZE: usize = 1_000_000; //1M max
     ///
     /// Create rocks_db_options
     ///
@@ -170,7 +174,9 @@ impl RocksDb {
 
     /// create a RocksDB instance from the config
     pub fn new(config: &RocksDbConfig, shutdown: Arc<AtomicBool>) -> Result<RocksDb, String> {
-        if config.restore_from_backup_at_startup {
+
+
+        if config.restore_from_backup_at_startup && config.enabled {
             if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&config) {
                 let mut restore_option = rocksdb::backup::RestoreOptions::default();
                 restore_option.set_keep_log_files(config.keep_log_file_while_restore);
@@ -194,12 +200,17 @@ impl RocksDb {
         } else {
             info!("Initializing DB from a path: {}", config.db_path);
         }
+        if !config.enabled {
+            warn!("DB not enabled for DB Path: {}", config.db_path);
+
+        }
 
         let db = Arc::new(RocksDb::init_rocks_db(&config)?);
 
-        let (tx, rx) = mpsc::unbounded::<KeyVal>();
+        //let (tx, rx) = mpsc::unbounded::<KeyVal>();
+        let (tx, rx) = mpsc::bounded::<KeyVal>(RocksDb::ASYNC_CHANNEL_BUFFER_SIZE);
 
-        if config.async_write {
+        if config.async_write && config.enabled {
             for _i in 0..config.num_async_writer_threads {
                 let config_clone = config.clone();
                 let db_clone = db.clone();
@@ -212,6 +223,7 @@ impl RocksDb {
         }
 
         Ok(RocksDb {
+            enabled: config.enabled,
             db,
             sender: tx,
             config: config.clone(),
@@ -219,9 +231,9 @@ impl RocksDb {
     }
 
     fn create_backup_engine(config: &RocksDbConfig) -> Result<BackupEngine, String> {
-        if !config.backup_enabled {
+        if !config.backup_enabled || !config.enabled{
             info!(
-                "Backup is not enabled for DB with path: {}. ",
+                "Db Not enabled or Backup is not enabled for DB with path: {}. ",
                 config.backup_path
             );
             return Err("Backup is not enabled.".to_string());
@@ -254,20 +266,40 @@ impl RocksDb {
     /// get key as str
     #[inline]
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(None);
+        }
+        debug!("Get from cache");
         match self.db.get(key) {
-            Ok(Some(value)) => Ok(Some(value.to_vec())),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e.to_string()),
+            Ok(Some(value)) => {
+                debug!("Get value found from cache");
+                Ok(Some(value.to_vec()))
+            },
+            Ok(None) => {
+                debug!("Get value not found from cache");
+                Ok(None)
+            },
+            Err(e) => {
+                debug!("Get value not found from cache. Error: {:?}", e);
+                Err(e.to_string())
+            },
         }
     }
 
     #[inline]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
+        debug!("Put to cache");
         if self.config.async_write {
+            debug!("Put async to cache");
             self.put_async(&key, &val)
         } else {
             match self.db.put(key, val) {
-                Ok(_r) => Ok(()),
+                Ok(_) => Ok(()),
                 Err(e) => Err(e.to_string()),
             }
         }
@@ -275,11 +307,17 @@ impl RocksDb {
 
     #[inline]
     pub fn put_key_val(&self, key_val: &KeyVal) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
+        debug!("Put put_key_val to cache");
         if self.config.async_write {
+            debug!("Put put_key_val async to cache");
             self.put_key_val_async(key_val)
         } else {
             match self.db.put(&key_val.key, &key_val.val) {
-                Ok(_r) => Ok(()),
+                Ok(_) => Ok(()),
                 Err(e) => Err(e.to_string()),
             }
         }
@@ -287,6 +325,10 @@ impl RocksDb {
 
     #[inline]
     fn put_key_val_async(&self, key_val: &KeyVal) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         match self.sender.send(key_val.clone()) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
@@ -295,6 +337,10 @@ impl RocksDb {
 
     #[inline]
     fn put_async(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         let key_val = KeyVal::new(&key, &val);
         match self.sender.send(key_val) {
             Ok(_) => Ok(()),
@@ -304,13 +350,21 @@ impl RocksDb {
 
     #[inline]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         match self.db.delete(key) {
-            Ok(_r) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
         }
     }
 
     pub fn backup_db(&self) -> Result<(), String> {
+        if !self.enabled{
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
             if let Err(e) = backup_engine.create_new_backup(&self.db) {
                 error!(
@@ -344,6 +398,10 @@ impl RocksDb {
     }
 
     pub fn purge_old_backup(&self, num_backups_to_keep: usize) -> Result<(), String> {
+        if !self.enabled {
+            debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
             if let Err(e) = backup_engine.purge_old_backups(num_backups_to_keep) {
                 error!(

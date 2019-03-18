@@ -13,20 +13,28 @@ publish = true
 travis-ci = { repository = "https://travis-ci.org/rohitjoshi/bhatho", branch = "master" }
 codecov = { repository = "https://codecov.io/gh/rohitjoshi/bhatho", branch = "master", service = "github" }
 
-
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+incremental = false
 
 
 [dependencies]
-log="0.4.6"
+log = { version = "0.3", features = ["max_level_trace", "release_max_level_info"] }
 serde = "1.0.27"
 serde_derive = "1.0.27"
 serde_json="1.0.33"
 crossbeam-channel = "0.3.2"
-#lru = "0.1.11"
-lru =  {git="https://github.com/jeromefroe/lru-rs", version="*"} 
-hashbrown = "0.1.8"
+lru = "0.1.12"
+#lru =  {path="../lru-rs", version="*"}
+hashbrown = { version = "0.1.8",  features = ["serde", "rayon"] }
 parking_lot = "0.7.1"
 rand="0.6"
 twox-hash = "1.1.2"
+jumphash = "~0"
+crc16 = "0.4.0"
 regex="1.1.0"
 rocksdb = {git="https://github.com/rust-rocksdb/rust-rocksdb", version="*"}
+scoped_threadpool="*"
+

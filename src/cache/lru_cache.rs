@@ -14,27 +14,34 @@ use std::io::Write;
 use std::result::Result;
 use std::str;
 use std::sync::Arc;
-use twox_hash::RandomXxHashBuilder;
-
+//use twox_hash::RandomXxHashBuilder;
+//use twox_hash::XxHash;
+//use std::collections::HashMap;
 use crate::keyval::KeyVal;
-type LruCacheVec = LruCache<Vec<u8>, Vec<u8>, RandomXxHashBuilder>;
+//use std::sync::atomic::{Ordering, AtomicUsize};
+//type LruCacheVec = HashMap<Vec<u8>, Vec<u8>>;
+type LruCacheVec = LruCache<Vec<u8>, Vec<u8>>;
 pub struct Lru {
+    id : usize,
     cache: Arc<Mutex<LruCacheVec>>,
     cache_capacity: usize,
+
 }
 
 /// send safe
-unsafe impl Send for Lru {}
+//unsafe impl Send for Lru {}
 
 /// sync safe
-unsafe impl Sync for Lru {}
+//unsafe impl Sync for Lru {}
 
 impl Clone for Lru {
     #[inline]
     fn clone(&self) -> Lru {
         Lru {
+            id : self.id,
             cache: self.cache.clone(),
             cache_capacity: self.cache_capacity,
+
         }
     }
 }
@@ -42,38 +49,36 @@ impl Clone for Lru {
 impl Lru {
     /// create a new object
     /// make sure path is valid
-    pub fn new(cache_capacity: usize) -> Lru {
-        let hasher = RandomXxHashBuilder::default();
-        let cache = Arc::new(Mutex::new(LruCacheVec::with_hasher(cache_capacity, hasher)));
+    pub fn new(id: usize, cache_capacity: usize) -> Lru {
+        //let hasher = RandomXxHashBuilder::default();
+        //let mut hasher = XxHash::with_seed(0);
+        let cache = Arc::new(Mutex::new(LruCacheVec::new(cache_capacity)));
+        //let cache = Arc::new(Mutex::new(HashMap::<Vec<u8>, Vec<u8>>::with_capacity(cache_capacity)));
         Lru {
+            id,
             cache,
-            cache_capacity,
+            cache_capacity
         }
     }
-    /// put key as str
-    #[inline(always)]
-    pub fn batch_put(&self, data: &[KeyVal]) -> Result<(), String> {
-        let mut cache = self.cache.lock();
-        for kv in data.iter() {
-            cache.put(kv.key.clone(), kv.val.clone());
-        }
 
-        Ok(())
-    }
 
     /// get key as str
     #[inline(always)]
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        //warn!("LruCache::Key:{}, shard:{}, Get",  String::from_utf8_lossy(&key), self.id);
         //get from cache first,
-        //self.cache.lock().get_mut(&key.to_vec())
-        match self.cache.lock().get_mut(&key.to_vec()) {
+        match self.cache.lock().get(&key.to_vec()) {
             Some(val) => Some(val.to_vec()),
-            None => None
+            None => {
+                //warn!("LruCache::Key:{}, shard:{}, GetNotFound",  String::from_utf8_lossy(&key), self.id);
+                None
+            }
         }
     }
     /// get key as str (wrapper function)
     #[inline(always)]
     pub fn get_str(&self, key: &str) -> Option<String> {
+
         match self.get(key.as_bytes()) {
             Some(val) => Some(String::from_utf8_lossy(&val).to_string()),
             None => None
@@ -83,12 +88,14 @@ impl Lru {
     /// put key as str
     #[inline(always)]
     pub fn put_str(&self, key: &str, val: &str) -> Result<(), String> {
+
         self.put(key.as_bytes(), val.as_bytes())
     }
 
     /// put key as str
     #[inline(always)]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
+        //warn!("LruCache::Key:{}, shard:{}, Put",  String::from_utf8_lossy(&key), self.id);
         self.cache.lock().put(key.to_vec(), val.to_vec());
         Ok(())
         /*
@@ -97,17 +104,34 @@ impl Lru {
         None => Ok(()),  /* new entry inserted successfully */
         }*/
     }
+
+    /// put key as str
+    #[inline(always)]
+    pub fn batch_put(&self, data: &[KeyVal]) -> Result<(), String> {
+
+        for kv in data.iter() {
+            self.cache.lock().put(kv.key.clone(), kv.val.clone());
+        }
+
+        Ok(())
+    }
     /// delete key
     #[inline(always)]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
-        self.cache.lock().pop(&key.to_vec());
-        //self.cache.lock().remove(&key.to_owned());
+        self.cache.lock().pop(&key.to_owned());
+        //self.cache.lock().pop(&key.to_owned());
         Ok(())
     }
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.cache.lock().len()
+    }
+
+
 
     pub fn export_keys(&self, file: &mut File) -> Result<u64, String> {
         let cache = &self.cache.lock();
-
+        debug!("Total Keys {} in shard:{}", cache.len(), self.id);
         let mut total = 0u64;
         for (key, _) in cache.iter() {
             if let Err(e) = file.write(key) {
@@ -120,7 +144,45 @@ impl Lru {
             }
             total += 1;
         }
+        info!("Total exported keys :{} in shard: {}", total, self.id);
         Ok(total)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //use crate::tests::rand::Rng;
+    use super::*;
+    use rand::{Rng, thread_rng};
+    use rand::distributions::Alphanumeric;
+    #[test]
+    fn test_lrucache_put_and_get_large() {
+        let capacity = 2000000;
+        let mut cache = Lru::new(0, capacity);
+
+
+        use std::collections::HashMap;
+        let mut data = HashMap::with_capacity(capacity);
+
+        let mut r_th = rand::thread_rng();
+        let mut k = "test".to_string();
+        for _ in 0..capacity {
+            let key = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+            let val = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+
+            cache.put(&key.as_bytes(), &val.as_bytes());
+            {
+
+                data.insert(key, val);
+            }
+
+        }
+
+        for (key, val) in data.iter() {
+            let mut cache_val = cache.get(key.as_bytes());
+            assert!(cache_val.is_some());
+            assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+        }
     }
 }
 /*

@@ -124,7 +124,8 @@ impl Bhatho {
             }
             //FIXME: Should we return error
         }
-        KeyVal::get_hash_code(&kv.key) as usize % self.dbs.len()
+
+        (kv.hash % self.dbs.len() as u64) as usize
     }
 
     pub fn new(config: &BhathoConfig, shutdown: Arc<AtomicBool>) -> Result<Bhatho, String> {
@@ -155,7 +156,9 @@ impl Bhatho {
     #[inline(always)]
     pub fn get(&self, kv: &KeyVal) -> Result<Option<(Vec<u8>, bool)>, String> {
         let shard = self.get_shard(&kv);
+
         self.dbs[shard].get_key_val(&kv)
+
     }
 
     ///
@@ -163,7 +166,9 @@ impl Bhatho {
     #[inline(always)]
     pub fn put(&self, kv: &KeyVal) -> Result<(), String> {
         let shard = self.get_shard(&kv);
+
         self.dbs[shard].put_key_val(&kv)
+
     }
 
     ///
@@ -199,20 +204,16 @@ impl Bhatho {
         info!("Taking a backup.  might take a while. Make sure instance remains up.");
 
         for db in self.dbs.iter() {
-            if db.enabled {
-                if !db_name.is_empty() {
-                    if db.name.as_bytes() == db_name {
-                        info!("Taking back for db: {}", db.name);
-                        db.backup_db()?;
-                    }
-                } else {
+            if !db_name.is_empty() {
+                if db.name.as_bytes() == db_name {
                     info!("Taking back for db: {}", db.name);
                     db.backup_db()?;
                 }
-                info!("Backup completed for db: {}", db.name);
-            }else {
-                info!("Backup not enabled for db: {}", db.name);
+            } else {
+                info!("Taking back for db: {}", db.name);
+                db.backup_db()?;
             }
+            info!("Backup completed for db: {}", db.name);
         }
         info!("DB Backup completed");
         Ok(())
@@ -222,7 +223,7 @@ impl Bhatho {
 #[cfg(test)]
 mod tests {
 
-    extern crate test;
+    //extern crate test;
     use std::collections::HashMap;
     use std::hash::Hasher;
     use std::thread;
@@ -232,10 +233,13 @@ mod tests {
     use self::rand::distributions::Alphanumeric;
     use self::rand::prelude::*;
     use self::rand::Rng;
-    use self::test::Bencher;
+    //use self::test::Bencher;
+
+
 
     extern crate rand;
 
+    /*
     #[bench]
     fn TenK_Write_bench(b: &mut Bencher) {
         let total = 10_000;
@@ -285,8 +289,8 @@ mod tests {
             data.push(kv);
         }
         let mut conf = BhathoConfig::default();
-        conf.db_configs[0].db_config.db_path = "/tmp/bhatho_tmp".to_string();
-        conf.db_configs[0].db_config.wal_dir = "/tmp/bhatho_tmp/wal".to_string();
+        conf.db_configs[0].rocks_db_config.db_path = "/tmp/bhatho_tmp".to_string();
+        conf.db_configs[0].rocks_db_config.wal_dir = "/tmp/bhatho_tmp/wal".to_string();
         let shutdown = Arc::new(AtomicBool::new(false));
         let bhatho = Bhatho::new(&conf, shutdown);
         if let Err(e) = bhatho {
@@ -304,13 +308,13 @@ mod tests {
                 let mut val = db.get(&kv);
             }
         });
-    }
+    }*/
 
     #[test]
     fn init_db_test() {
         let mut conf = BhathoConfig::default();
 
-        conf.db_configs[0].db_config.restore_from_backup_at_startup = false;
+        conf.db_configs[0].rocks_db_config.restore_from_backup_at_startup = false;
         let shutdown = Arc::new(AtomicBool::new(false));
         let bhatho = Bhatho::new(&conf, shutdown);
         if let Err(e) = bhatho {
@@ -326,7 +330,7 @@ mod tests {
         db.put(&kv);
         let res = db.get(&kv);
         assert!(res.is_ok() == true);
-        let (v2, _from_cache) = res.unwrap();
+        let (v2, _from_cache) = res.unwrap().unwrap();
         assert!(val.to_vec() == v2);
     }
 

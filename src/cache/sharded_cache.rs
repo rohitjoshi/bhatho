@@ -8,52 +8,36 @@
 **************************************************/
 use std::fs::OpenOptions;
 use std::sync::Arc;
-
+use parking_lot::Mutex;
 use crate::cache::config::CacheConfig;
 use crate::cache::lru_cache::Lru;
 use crate::keyval::KeyVal;
 
+
 pub struct ShardedCache {
     pub shards: Arc<Vec<Lru>>,
     config: CacheConfig,
+    enabled: bool,
+
 }
 
-unsafe impl Send for ShardedCache {}
+//unsafe impl Send for ShardedCache {}
 
-unsafe impl Sync for ShardedCache {}
+//unsafe impl Sync for ShardedCache {}
 
 impl Clone for ShardedCache {
     fn clone(&self) -> ShardedCache {
         ShardedCache {
             shards: self.shards.clone(),
             config: self.config.clone(),
+            enabled : self.enabled,
+
         }
     }
 }
 
 impl ShardedCache {
-    /*#[inline]
-    pub fn get_shard(&self, data: &[u8]) -> usize {
-        if self.num_shards < 2 {
-            return 0;
-        }
-        ShardedCache::get_shard2(&data, self.num_shards)
-    }
-    #[inline]
-    pub fn get_shard1(data: &[u8], num_shards: u16) -> usize {
-        let mut total: u64 = 0;
-        for d in data.iter() {
-            total += *d as u64;
-        }
-        ((total % num_shards as u64) as usize)
-    }
-    #[inline]
-    pub fn get_shard2(data: &[u8], num_shards: u16) -> usize {
-        let mut hasher = XxHash::with_seed(0);
-        hasher.write(&data);
-        let total: u64 = hasher.finish();
-        ((total % num_shards as u64) as usize)
-    }*/
+
 
     ///
     /// get shard logic is simple. mod of hash code with number of db instances.
@@ -61,12 +45,15 @@ impl ShardedCache {
     /// e.g Key suffix or prefix
     #[inline(always)]
     fn get_shard(&self, key: &[u8]) -> usize {
-        KeyVal::get_hash_code(&key) as usize % self.config.num_shards
+       KeyVal::key_slot(key, self.config.num_shards) as usize
     }
 
     #[inline(always)]
-    fn get_shard_key_val(&self, key_val: &KeyVal) -> usize {
-        key_val.hash as usize % self.config.num_shards
+    fn get_shard_key_val(&self, kv: &KeyVal) -> usize {
+
+        kv.slot(self.config.num_shards) as usize
+
+
     }
 
     #[inline(always)]
@@ -78,28 +65,48 @@ impl ShardedCache {
     /// make sure path is valid
     pub fn new(config: &CacheConfig) -> ShardedCache {
         assert!(config.num_shards > 0);
-        let shard_capacity = config.cache_capacity / config.num_shards as usize;
+        let mut shard_capacity = config.cache_capacity / config.num_shards as usize;
+        match shard_capacity.checked_next_power_of_two() {
+            Some(power_of_two) => {
+                shard_capacity = power_of_two
+            } ,
+            None => {}
+        }
+        info!("cache_capacity:{}, num_shards:{}, shard_capacity: {}", config.cache_capacity, config.num_shards, shard_capacity);
         assert!(shard_capacity > 0);
         let mut shards: Vec<Lru> = Vec::with_capacity(config.num_shards as usize);
         if config.enabled {
-            for _ in 0..config.num_shards {
-                shards.push(Lru::new(shard_capacity));
+            for i in 0..config.num_shards {
+                let lru = Lru::new(i, shard_capacity);
+                shards.push(lru);
             }
+        }else {
+            warn!("LruCache not enabled");
         }
 
         ShardedCache {
             shards: Arc::new(shards),
             config: config.clone(),
+            enabled: config.enabled,
+
         }
+    }
+
+    #[inline]
+    pub fn get_lru_shard(&self,shard: usize) -> &Lru {
+        //let shard = self.get_shard(&key);
+        &self.shards[shard]
     }
     /// put key as str
     #[inline]
     pub fn batch_put(&self, data: &[KeyVal]) -> Result<(), String> {
-        if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+        if !self.enabled {
+            debug!("Cache is not enabled");
+            return Ok(());
         }
         for kv in data.iter() {
-            if let Err(e) = self.shards[self.get_shard_key_val(&kv)].put(&kv.key, &kv.val) {
+            let shard = self.get_shard_key_val(&kv);
+            if let Err(e) = self.shards[shard].put(&kv.key, &kv.val) {
                 debug!(
                     "Insert failed for the key: {}. Error: {:?}",
                     String::from_utf8_lossy(&kv.key),
@@ -111,7 +118,8 @@ impl ShardedCache {
     }
     #[inline]
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        if !self.config.enabled {
+        if !self.enabled {
+            debug!("Cache is not enabled");
             return None;
         }
         let shard = self.get_shard(&key);
@@ -120,7 +128,8 @@ impl ShardedCache {
 
     #[inline]
     pub fn get_key_val(&self, kv: &KeyVal) -> Option<Vec<u8>> {
-        if !self.config.enabled {
+        if !self.enabled {
+            debug!("Cache is not enabled");
             return None;
         }
         let shard = self.get_shard_key_val(&kv);
@@ -129,8 +138,9 @@ impl ShardedCache {
 
     #[inline]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
-        if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+        if !self.enabled {
+            debug!("Cache is not enabled");
+            return Ok(());
         }
         let shard = self.get_shard(&key);
         self.shards[shard].put(&key, &val)
@@ -138,8 +148,9 @@ impl ShardedCache {
 
     #[inline]
     pub fn put_key_val(&self, kv: &KeyVal,  val: &[u8]) -> Result<(), String> {
-        if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+        if !self.enabled {
+            debug!("Cache is not enabled");
+            return Ok(());
         }
         let shard = self.get_shard_key_val(&kv);
         self.shards[shard].put(&kv.key, &val)
@@ -147,21 +158,23 @@ impl ShardedCache {
 
     #[inline]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
-        if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+        if !self.enabled {
+            debug!("Cache is not enabled");
+            return Ok(());
         }
         let shard = self.get_shard(&key);
         self.shards[shard].delete(&key)
     }
 
     pub fn export_keys(&self) -> Result<u64, String> {
-        if !self.config.enabled {
-            return Err(String::from("Cache is not enabled"));
+        if !self.enabled {
+            debug!("Cache is not enabled");
+            return Ok(0);
         }
 
         if !self.config.keys_dump_enabled {
             info!("Exporting lru keys not enabled for export key file :{}", self.config.keys_dump_file);
-            return Err("Exporting lru keys not enabled".to_string());
+            return Ok(0);
         }
         warn!("This is a blocking operation");
         info!("Exporting keys from the cache");
@@ -188,6 +201,10 @@ impl ShardedCache {
         let mut total = 0u64;
         for i in 0..self.shards.len() {
             let count = self.shards[i].export_keys(&mut file)?;
+            info!(
+                "Successfully exported {} keys from the cache shard {} to file {}",
+                count, i, self.config.keys_dump_file
+            );
 
             total += count;
         }
@@ -199,5 +216,278 @@ impl ShardedCache {
             total, self.config.keys_dump_file
         );
         Ok(total)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    //use crate::tests::rand::Rng;
+    extern crate scoped_threadpool;
+    use super::*;
+    use rand::{Rng, thread_rng};
+    use rand::distributions::Alphanumeric;
+    use std::collections::HashMap;
+    use scoped_threadpool::Pool;
+
+    #[test]
+    fn test_sharded_cache_put_and_get_large() {
+
+        let capacity = 2000000;
+        let mut cache = Lru::new(0, capacity);
+
+        let mut data = HashMap::with_capacity(capacity);
+
+        let mut r_th = rand::thread_rng();
+        let mut k = "test".to_string();
+        for _ in 0..capacity {
+            let key = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+            let val = format!("{}", (KeyVal::get_hash_code(&key.as_bytes()) as usize));
+
+            cache.put(&key.as_bytes(), &val.as_bytes());
+            data.insert(key, val);
+
+
+        }
+
+        for (key, val) in data.iter() {
+            let mut cache_val = cache.get(key.as_bytes());
+            assert!(cache_val.is_some());
+            assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+        }
+
+    }
+
+    #[test]
+    fn test_sharded_cache_put_and_get_multi_shards() {
+
+        let num_shards = 32;
+        let capacity = 2000000;
+        let shard_capacity = capacity/num_shards;
+        let mut shards = Vec::with_capacity(num_shards);
+
+        for i in 0..num_shards {
+            let mut cache = Lru::new(i, capacity);
+            shards.push(cache)
+        }
+
+        let mut data = HashMap::with_capacity(capacity);
+
+        let mut r_th = rand::thread_rng();
+        let mut k = "test".to_string();
+        for _ in 0..capacity {
+            let key = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+            let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+            let s = hash % num_shards;
+            let val = format!("{}", hash);
+
+            shards[s].put(&key.as_bytes(), &val.as_bytes());
+            data.insert(key, val);
+
+
+        }
+
+        for (key, val) in data.iter() {
+            let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+            let s = hash % num_shards;
+            let mut cache_val = shards[s].get(key.as_bytes());
+            assert!(cache_val.is_some());
+            assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+        }
+
+    }
+
+    #[test]
+    fn test_sharded_lru_cache_put_and_get_multi_shards_mt() {
+
+
+        let num_shards = 32;
+        let capacity = 1_000_000;
+        let shard_capacity = capacity/num_shards;
+        let mut shards = Vec::with_capacity(num_shards);
+
+        for i in 0..num_shards {
+            let mut cache = Lru::new(i, capacity);
+            shards.push(cache);
+        }
+        let mut shards = Arc::new(shards);
+        let mut data = HashMap::with_capacity(capacity);
+        let mut pool = Pool::new(8);
+        let shards_ref = &shards;
+        pool.scoped(|scoped| {
+            for _ in 0..capacity {
+                let mut r_th = rand::thread_rng();
+                let key = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+                let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                let s = hash % num_shards;
+                let val = format!("{}", hash);
+                data.insert(key.clone(), val.clone());
+                scoped.execute(move || {
+                    shards_ref[s].put(&key.as_bytes(), &val.as_bytes());
+                });
+            }
+        });
+        println!("Insert completed");
+        let shards_ref = &shards;
+        pool.scoped(|scoped| {
+                for (key, val) in data.iter() {
+                    scoped.execute(move || {
+                        let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                        let s = hash % num_shards;
+                        let mut cache_val = shards_ref[s].get(key.as_bytes());
+                        assert!(cache_val.is_some());
+                        assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+                    });
+                }
+         });
+
+    }
+
+    #[test]
+    fn test_sharded_cache_put_and_get_multi_shards_mt() {
+
+        let num_shards = 1024;
+        let capacity = 10_000_000;
+        let mut cache_config = CacheConfig::default();
+        cache_config.cache_capacity = capacity;
+        cache_config.num_shards = num_shards;
+        for i in 6..32 {
+            println!("Test started for key length: {}", i);
+            let shared_cache = ShardedCache::new(&cache_config);
+            let mut data = HashMap::with_capacity(capacity);
+            let mut pool = Pool::new(8);
+            let shards_ref = &shared_cache;
+            pool.scoped(|scoped| {
+                for _ in 0..capacity {
+                    let mut r_th = rand::thread_rng();
+                    let key = r_th.sample_iter(&Alphanumeric).take(i).collect::<String>();
+                    let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                    let val = format!("{}", hash);
+                    data.insert(key.clone(), val.clone());
+                    scoped.execute(move || {
+                        shards_ref.put(&key.as_bytes(), &val.as_bytes());
+                    });
+                }
+            });
+            ;
+            println!("Insert completed for key length:{}", i);
+            let shards_ref = &shared_cache;
+            pool.scoped(|scoped| {
+                for (key, val) in data.iter() {
+                    scoped.execute(move || {
+                        let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                        let mut cache_val = shards_ref.get(key.as_bytes());
+                        assert!(cache_val.is_some());
+
+                        assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+                    });
+                }
+            });
+            println!("Test completed for key length: {}", i);
+        }
+
+    }
+
+    #[test]
+    fn test_sharded_cache_custom_put_and_get_multi_shards_mt() {
+
+        struct ShardedTestCache {
+            pub shards: Arc<Vec<Lru>>,
+            pub num_shards: usize
+        }
+        impl ShardedTestCache {
+            fn get_shard(&self, key: &[u8]) -> usize {
+                //let jh = jumphash::JumpHasher::new();
+                //jh.slot(&key, self.config.num_shards as u32) as usize
+                (KeyVal::get_hash_code(&key) % self.num_shards as u64) as usize
+            }
+            pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+                let shard = self.get_shard(&key);
+                self.shards[shard].get(&key)
+            }
+            pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
+
+                let shard = self.get_shard(&key);
+                self.shards[shard].put(&key, &val)
+            }
+
+            pub fn new(num_shards: usize, capacity: usize) -> ShardedTestCache{
+                let shard_capacity = capacity / num_shards;
+                let mut shards = Vec::with_capacity(num_shards);
+
+                for i in 0..num_shards {
+                    let mut cache = Lru::new(i, shard_capacity);
+                    shards.push(cache);
+                }
+                ShardedTestCache {
+                    num_shards,
+                    shards: Arc::new(shards)
+                }
+            }
+        }
+
+        let num_shards = 32;
+        let capacity = 1_000_000;
+        let mut cache_config = CacheConfig::default();
+        cache_config.cache_capacity = capacity;
+        cache_config.num_shards = num_shards;
+        let shared_cache = ShardedTestCache::new(num_shards, capacity);
+        let mut data = HashMap::with_capacity(capacity);
+        let mut pool = Pool::new(8);
+        let shards_ref = &shared_cache;
+        pool.scoped(|scoped| {
+            for _ in 0..capacity {
+                let mut r_th = rand::thread_rng();
+                let key = r_th.sample_iter(&Alphanumeric).take(32).collect::<String>();
+                let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                let val = format!("{}", hash);
+                data.insert(key.clone(), val.clone());
+                scoped.execute(move || {
+                    shards_ref.put(&key.as_bytes(), &val.as_bytes());
+                });
+            }
+        });
+        ;
+        println!("Insert completed");
+        let shards_ref = &shared_cache;
+        pool.scoped(|scoped| {
+            for (key, val) in data.iter() {
+                scoped.execute(move || {
+                    let hash = (KeyVal::get_hash_code(&key.as_bytes()) as usize);
+                    let s = hash % num_shards;
+                    let mut cache_val = shards_ref.get(key.as_bytes());
+                    assert!(cache_val.is_some());
+                    assert_eq!(*val, String::from_utf8_lossy(&cache_val.unwrap()));
+
+                });
+            }
+        });
+
+    }
+
+    #[test]
+    fn test_sharded_cache_keyval_hashcode() {
+        let capacity = 2000000;
+        let mut cache = HashMap::with_capacity(capacity);
+        let mut data = HashMap::with_capacity(capacity);
+
+        let mut r_th = rand::thread_rng();
+        let mut k = "test".to_string();
+        for _ in 0..capacity {
+            let key = r_th.sample_iter(&Alphanumeric).take(8).collect::<String>();
+            let val = format!("{}", (KeyVal::get_hash_code(&key.as_bytes()) as usize));
+
+            cache.insert(key.clone(), val.clone());
+            data.insert(key, val);
+
+
+        }
+
+        for (key, val) in data.iter() {
+            let mut cache_val = cache.get(key);
+            assert!(cache_val.is_some());
+            assert_eq!(val, cache_val.unwrap());
+        }
+
     }
 }

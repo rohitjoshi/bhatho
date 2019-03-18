@@ -12,20 +12,18 @@ use crate::cache::config::CacheConfig;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DbManagerConfig {
-    pub enabled: bool,
     pub name: String,
-    pub db_config: RocksDbConfig,
+    pub rocks_db_config: RocksDbConfig,
     pub cache_config: CacheConfig,
 }
 
 impl Default for DbManagerConfig {
     fn default() -> DbManagerConfig {
-        let db_config = RocksDbConfig::default();
+        let rocks_db_config = RocksDbConfig::default();
         let cache_config = CacheConfig::default();
         DbManagerConfig {
-            enabled: true,
             name: "".to_string(),
-            db_config,
+            rocks_db_config,
             cache_config,
         }
     }
