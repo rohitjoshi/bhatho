@@ -6,11 +6,10 @@
    License: Apache 2.0
 
 **************************************************/
-use std::hash::Hasher;
-use twox_hash::XxHash;
 use crc16::{State, XMODEM};
 use jumphash;
-
+use std::hash::Hasher;
+use twox_hash::XxHash;
 
 //key value structure
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,7 +36,6 @@ impl Clone for KeyVal {
 }
 
 impl KeyVal {
-
     #[inline]
     pub fn new(key: &[u8], val: &[u8]) -> KeyVal {
         let hash = KeyVal::get_hash_code(&key);
@@ -114,7 +112,7 @@ impl KeyVal {
 
     ///
   /// get the slot based on total slot count
-    pub fn key_slot(key:&[u8], slot_count: usize) -> u64 {
+    pub fn key_slot(key: &[u8], slot_count: usize) -> u64 {
         if slot_count == 1 {
             return 0;
         }
@@ -144,13 +142,12 @@ impl KeyVal {
     }
 
     #[inline]
-    fn gen_consistent_slot(hash:u64, slot_count: usize) -> u64 {
-
+    fn gen_consistent_slot(hash: u64, slot_count: usize) -> u64 {
         let mut h = hash;
         let (mut b, mut j) = (-1i64, 0i64);
         while j < slot_count as i64 {
             b = j;
-            h = h.wrapping_mul(2862933555777941757).wrapping_add(1);
+            h = h.wrapping_mul(2_862_933_555_777_941_757).wrapping_add(1);
             j = ((b.wrapping_add(1) as f64) * (((1u64 << 31) as f64) / (((h >> 33) + 1) as f64))) as i64;
         }
         b as u64
@@ -159,23 +156,20 @@ impl KeyVal {
     #[inline]
     pub fn get_slot_jumphash(key: &[u8], slot_count: usize) -> u64 {
         let jh = jumphash::JumpHasher::new();
-        jh.slot(&key, slot_count as u32) as u64
+        u64::from(jh.slot(&key, slot_count as u32))
     }
-
-
-
 }
 
 #[cfg(test)]
 mod tests {
-    //use crate::tests::rand::Rng;
-    use super::*;
     use rand::{Rng, thread_rng};
     use rand::distributions::Alphanumeric;
+
+    //use crate::tests::rand::Rng;
+    use super::*;
 
     #[test]
     fn test_get_hash_code() {
         let key = b"1234567890abcdefghijkl";
-
     }
 }

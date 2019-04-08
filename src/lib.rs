@@ -15,8 +15,9 @@ extern crate serde_derive;
 use regex;
 use regex::Regex;
 use std::str;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
 use crate::db::config::DbManagerConfig;
 use crate::db::db_manager::DbManager;
 use crate::keyval::KeyVal;
@@ -30,6 +31,7 @@ pub struct RegExMapping {
     extract_name_regex: String,
     new_db_name: String,
 }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DbNameExtractor {
     pub enabled: bool,
@@ -44,6 +46,7 @@ pub struct BhathoConfig {
     pub db_configs: Vec<DbManagerConfig>,
     pub db_name_extractor_from_key: DbNameExtractor,
 }
+
 impl Default for BhathoConfig {
     fn default() -> BhathoConfig {
         let mut db_configs = Vec::with_capacity(1);
@@ -69,6 +72,7 @@ pub struct Bhatho {
 }
 
 unsafe impl Send for Bhatho {}
+
 unsafe impl Sync for Bhatho {}
 
 impl Clone for Bhatho {
@@ -158,7 +162,6 @@ impl Bhatho {
         let shard = self.get_shard(&kv);
 
         self.dbs[shard].get_key_val(&kv)
-
     }
 
     ///
@@ -168,7 +171,6 @@ impl Bhatho {
         let shard = self.get_shard(&kv);
 
         self.dbs[shard].put_key_val(&kv)
-
     }
 
     ///
@@ -183,37 +185,65 @@ impl Bhatho {
     /// Export all the Keys from LRU Cache to a file path configured in the cache mgr
     pub fn export_lru_keys(&self, db_name: &[u8]) -> Result<(), String> {
         info!("Exporting Lru Keys.  might take a while. Make sure instance remains up.");
-        for db in self.dbs.iter() {
-            let mut count = 0u64;
-            if !db_name.is_empty() {
-                if db.name.as_bytes() == db_name {
-                    info!("Exporting keys for  db cache : {}", db.name);
-                    count = db.export_lru_keys()?;
-                }
-            } else {
-                info!("Exporting keys for  db cache : {}", db.name);
-                count = db.export_lru_keys()?;
-            }
+        for i in 0..self.dbs.len() {
+            let dbs = self.dbs.clone();
+            let db_name_str = String::from_utf8_lossy(db_name).to_string();
+            std::thread::spawn(move || {
+                let db = &dbs[i];
 
-            info!("{} Keys export completed for db cache: {}", count, db.name);
-        }
+                //let db =db.lock();
+                let mut count = 0u64;
+                if !db_name_str.is_empty() {
+                    if db.name == db_name_str {
+                        info!("Exporting keys for  db cache : {}", db_name_str);
+                        count = match db.export_lru_keys() {
+                            Ok(c) => c,
+                            Err(e) => {
+                                error!("Failed to export lru cache for db: {}. Error:{:?}", db_name_str, e);
+                                0
+                            }
+                        }
+                    }
+                } else {
+                    info!("Exporting keys for  db cache : {}", db_name_str);
+                    count = match db.export_lru_keys() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            error!("Failed to export lru cache for db: {}. Error:{:?}", db_name_str, e);
+                            0
+                        }
+                    }
+                }
+
+                info!("{} Keys export completed for db cache: {}", count, db_name_str);
+            });
+        };
         Ok(())
     }
 
     pub fn backup_db(&self, db_name: &[u8]) -> Result<(), String> {
         info!("Taking a backup.  might take a while. Make sure instance remains up.");
 
-        for db in self.dbs.iter() {
-            if !db_name.is_empty() {
-                if db.name.as_bytes() == db_name {
-                    info!("Taking back for db: {}", db.name);
-                    db.backup_db()?;
+        for i in 0..self.dbs.len() {
+            let dbs = self.dbs.clone();
+            let db_name_str = String::from_utf8_lossy(db_name).to_string();
+            std::thread::spawn(move || {
+                let db = &dbs[i];
+                if !db_name_str.is_empty() {
+                    if db.name == db_name_str {
+                        info!("Taking back for db: {}", db_name_str);
+                        if let Err(e) = db.backup_db() {
+                            error!("Failed to take a backup for db: {}. Error:{:?}", db_name_str, e);
+                        }
+                    }
+                } else {
+                    info!("Taking back for db: {}", db_name_str);
+                    if let Err(e) = db.backup_db() {
+                        error!("Failed to take a backup for db: {}. Error:{:?}", db_name_str, e);
+                    }
                 }
-            } else {
-                info!("Taking back for db: {}", db.name);
-                db.backup_db()?;
-            }
-            info!("Backup completed for db: {}", db.name);
+                info!("Backup completed for db: {}", db_name_str);
+            });
         }
         info!("DB Backup completed");
         Ok(())
@@ -222,7 +252,6 @@ impl Bhatho {
 
 #[cfg(test)]
 mod tests {
-
     //extern crate test;
     use std::collections::HashMap;
     use std::hash::Hasher;
@@ -233,8 +262,8 @@ mod tests {
     use self::rand::distributions::Alphanumeric;
     use self::rand::prelude::*;
     use self::rand::Rng;
-    //use self::test::Bencher;
 
+//use self::test::Bencher;
 
 
     extern crate rand;
@@ -333,5 +362,4 @@ mod tests {
         let (v2, _from_cache) = res.unwrap().unwrap();
         assert!(val.to_vec() == v2);
     }
-
 }

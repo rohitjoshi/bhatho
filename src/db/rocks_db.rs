@@ -7,16 +7,15 @@
 
 **************************************************/
 use crossbeam_channel as mpsc;
+use rocksdb::{
+    BlockBasedIndexType, BlockBasedOptions, DB as rocks_db, DBCompressionType, SliceTransform,
+    WriteBatch,
+};
 use rocksdb::backup::{BackupEngine, BackupEngineOptions};
 use rocksdb::Options as rocks_options;
-use rocksdb::{
-    BlockBasedIndexType,DBCompactionStyle,  BlockBasedOptions, DBCompressionType, SliceTransform, WriteBatch,
-    DB as rocks_db,
-};
-
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -49,54 +48,66 @@ impl Clone for RocksDb {
 }
 
 impl RocksDb {
-    ///mpsc channel size
-    const ASYNC_CHANNEL_BUFFER_SIZE: usize = 1_000_000; //1M max
+
+    //1M max
     ///
     /// Create rocks_db_options
     ///
     fn create_rocks_db_options(rocks_config: &RocksDbConfig) -> Result<rocks_options, String> {
         let mut opts = rocks_options::default();
-        opts.set_bytes_per_sync(1024*1024);
-        opts.set_use_fsync(false);
-        opts.optimize_for_point_lookup(1024);
-        opts.set_target_file_size_base(128 * 1024 * 1024);
-        opts.set_min_write_buffer_number_to_merge(4);
-        opts.set_level_zero_stop_writes_trigger(2000);
-        opts.set_level_zero_slowdown_writes_trigger(0);
-        opts.set_compaction_style(DBCompactionStyle::Universal);
-
-        opts.set_max_open_files(rocks_config.max_open_files);
-        opts.increase_parallelism(rocks_config.num_threads_parallelism);
         opts.create_if_missing(rocks_config.create_if_missing);
-        opts.set_compression_type(DBCompressionType::None); //Lz4
-        //opts.enable_pipelined_write(rocks_config.pipelined_write);
-        if rocks_config.enable_statistics {
-            opts.enable_statistics();
+
+        if rocks_config.point_lookup_block_size_mb > 0 {
+            opts.optimize_for_point_lookup(rocks_config.point_lookup_block_size_mb);
         }
-        opts.set_write_buffer_size(rocks_config.write_buffer_size_mb * 1024 * 1024); // 128mb
-        opts.set_max_write_buffer_number(rocks_config.max_write_buffer_number);
-        opts.set_min_write_buffer_number(rocks_config.min_write_buffer_number);
-        opts.set_max_background_compactions(rocks_config.max_background_compactions);
-        opts.set_max_background_flushes(rocks_config.max_background_flushes);
-        // opts.set_allow_os_buffer(false);
-        opts.set_allow_concurrent_memtable_write(true);
-        opts.set_table_cache_num_shard_bits(rocks_config.num_shard_bits);
+
+        if !rocks_config.use_default_config {
+            /*
+            opts.optimize_for_point_lookup(2*1024)
+            opts.set_bytes_per_sync(1024 * 1024);
+            opts.set_use_fsync(false);
+            opts.set_target_file_size_base(128 * 1024 * 1024);
+            opts.set_min_write_buffer_number_to_merge(4);
+            opts.set_level_zero_stop_writes_trigger(2000);
+            opts.set_level_zero_slowdown_writes_trigger(0);
+            opts.set_compaction_style(DBCompactionStyle::Universal);*/
+
+            opts.set_max_open_files(rocks_config.max_open_files);
+            opts.increase_parallelism(rocks_config.num_threads_parallelism);
+
+            opts.set_compression_type(DBCompressionType::None); //Lz4
+            //opts.enable_pipelined_write(rocks_config.pipelined_write);
+            if rocks_config.enable_statistics {
+                opts.enable_statistics();
+            }
+            opts.set_write_buffer_size(rocks_config.write_buffer_size_mb * 1024 * 1024); // 128mb
+            opts.set_max_write_buffer_number(rocks_config.max_write_buffer_number);
+            opts.set_min_write_buffer_number(rocks_config.min_write_buffer_number);
+            opts.set_max_background_compactions(rocks_config.max_background_compactions);
+            opts.set_max_background_flushes(rocks_config.max_background_flushes);
+            // opts.set_allow_os_buffer(false);
+            opts.set_allow_concurrent_memtable_write(true);
+            opts.set_table_cache_num_shard_bits(rocks_config.num_shard_bits);
+        }
 
         let mut block_opts = BlockBasedOptions::default();
-        block_opts.set_block_size(rocks_config.block_size);
-        let prefix_extractor = SliceTransform::create_fixed_prefix(3);
-        opts.set_prefix_extractor(prefix_extractor);
-        block_opts.set_index_type(BlockBasedIndexType::HashSearch);
 
-        block_opts.set_cache_index_and_filter_blocks(true);
-        if rocks_config.bloom_filter {
-            block_opts.set_bloom_filter(10, true);
+        if !rocks_config.use_default_block_config {
+            block_opts.set_block_size(rocks_config.block_size);
+            let prefix_extractor = SliceTransform::create_fixed_prefix(3);
+            opts.set_prefix_extractor(prefix_extractor);
+            block_opts.set_index_type(BlockBasedIndexType::HashSearch);
+
+            block_opts.set_cache_index_and_filter_blocks(true);
+            if rocks_config.bloom_filter {
+                block_opts.set_bloom_filter(10, true);
+            }
+            if rocks_config.lru_cache_size_mb > 0 {
+                block_opts.set_lru_cache(rocks_config.lru_cache_size_mb * 1024 * 1024); //1GB:  In prod, it should be 64GB
+            }
         }
         opts.set_block_based_table_factory(&block_opts);
 
-        if rocks_config.lru_cache_size_mb > 0 {
-            block_opts.set_lru_cache(rocks_config.lru_cache_size_mb * 1024 * 1024); //1GB:  In prod, it should be 64GB
-        }
 
         if !rocks_config.wal_dir.is_empty() {
             opts.set_wal_dir(&rocks_config.wal_dir);
@@ -174,8 +185,6 @@ impl RocksDb {
 
     /// create a RocksDB instance from the config
     pub fn new(config: &RocksDbConfig, shutdown: Arc<AtomicBool>) -> Result<RocksDb, String> {
-
-
         if config.restore_from_backup_at_startup && config.enabled {
             if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&config) {
                 let mut restore_option = rocksdb::backup::RestoreOptions::default();
@@ -194,21 +203,18 @@ impl RocksDb {
                     return Err(e.to_string());
                 }
                 info!("Restoring DB from a backup path: {}", config.backup_path);
-            } else {
-
-            }
+            } else {}
         } else {
             info!("Initializing DB from a path: {}", config.db_path);
         }
         if !config.enabled {
             warn!("DB not enabled for DB Path: {}", config.db_path);
-
         }
 
         let db = Arc::new(RocksDb::init_rocks_db(&config)?);
 
         //let (tx, rx) = mpsc::unbounded::<KeyVal>();
-        let (tx, rx) = mpsc::bounded::<KeyVal>(RocksDb::ASYNC_CHANNEL_BUFFER_SIZE);
+        let (tx, rx) = mpsc::bounded::<KeyVal>(config.async_write_queue_length);
 
         if config.async_write && config.enabled {
             for _i in 0..config.num_async_writer_threads {
@@ -231,7 +237,7 @@ impl RocksDb {
     }
 
     fn create_backup_engine(config: &RocksDbConfig) -> Result<BackupEngine, String> {
-        if !config.backup_enabled || !config.enabled{
+        if !config.backup_enabled || !config.enabled {
             info!(
                 "Db Not enabled or Backup is not enabled for DB with path: {}. ",
                 config.backup_path
@@ -266,36 +272,36 @@ impl RocksDb {
     /// get key as str
     #[inline]
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(None);
         }
-        debug!("Get from cache");
+        debug!("Get from db");
         match self.db.get(key) {
             Ok(Some(value)) => {
-                debug!("Get value found from cache");
+                debug!("Got value found from db");
                 Ok(Some(value.to_vec()))
-            },
+            }
             Ok(None) => {
-                debug!("Get value not found from cache");
+                debug!("Get value not found from db");
                 Ok(None)
-            },
+            }
             Err(e) => {
-                debug!("Get value not found from cache. Error: {:?}", e);
+                debug!("Get value not found from db. Error: {:?}", e);
                 Err(e.to_string())
-            },
+            }
         }
     }
 
     #[inline]
     pub fn put(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
-        debug!("Put to cache");
+        debug!("Put to db");
         if self.config.async_write {
-            debug!("Put async to cache");
+            debug!("Put async to db");
             self.put_async(&key, &val)
         } else {
             match self.db.put(key, val) {
@@ -307,13 +313,13 @@ impl RocksDb {
 
     #[inline]
     pub fn put_key_val(&self, key_val: &KeyVal) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
-        debug!("Put put_key_val to cache");
+        debug!("Put put_key_val to db");
         if self.config.async_write {
-            debug!("Put put_key_val async to cache");
+            debug!("Put put_key_val async to db");
             self.put_key_val_async(key_val)
         } else {
             match self.db.put(&key_val.key, &key_val.val) {
@@ -325,7 +331,7 @@ impl RocksDb {
 
     #[inline]
     fn put_key_val_async(&self, key_val: &KeyVal) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
@@ -337,7 +343,7 @@ impl RocksDb {
 
     #[inline]
     fn put_async(&self, key: &[u8], val: &[u8]) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
@@ -350,7 +356,7 @@ impl RocksDb {
 
     #[inline]
     pub fn delete(&self, key: &[u8]) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
@@ -361,7 +367,7 @@ impl RocksDb {
     }
 
     pub fn backup_db(&self) -> Result<(), String> {
-        if !self.enabled{
+        if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
@@ -379,19 +385,19 @@ impl RocksDb {
             );
             Ok(())
 
-        /*let res = self.backup_engine.map(|mut be| {
-            if let Err(e) = be.create_new_backup(&self.db) {
-                {
-                    error!("Failed to create a new backup using path: {}. Error:{:?}", self.config.backup_path, e);
-                    return Err(e.to_string());
+            /*let res = self.backup_engine.map(|mut be| {
+                if let Err(e) = be.create_new_backup(&self.db) {
+                    {
+                        error!("Failed to create a new backup using path: {}. Error:{:?}", self.config.backup_path, e);
+                        return Err(e.to_string());
+                    }
+                }else {
+                    info!("Backup completed. DB Path: {},  Backup Path: {}",
+                          self.config.db_path, self.config.backup_path);
+                    return Ok(());
                 }
-            }else {
-                info!("Backup completed. DB Path: {},  Backup Path: {}",
-                      self.config.db_path, self.config.backup_path);
-                return Ok(());
-            }
-        });
-        res.unwrap()*/
+            });
+            res.unwrap()*/
         } else {
             Err("Backup Engine was not initialized".to_string())
         }
