@@ -11,13 +11,15 @@ use std::str;
 pub struct CacheManagerConfig {
     pub cache_configs: Vec<CacheConfig>,
 }
+
 impl Default for CacheManagerConfig {
     fn default() -> CacheManagerConfig {
         let mut cache_configs = Vec::with_capacity(1);
         cache_configs.push(CacheConfig::default());
         CacheManagerConfig { cache_configs }
     }
-}
+    }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CacheConfig {
     pub enabled: bool,
@@ -37,7 +39,7 @@ impl Default for CacheConfig {
             num_shards: 1024,
             cache_update_on_db_read: true,
             cache_update_on_db_write: true,
-            keys_dump_enabled : true,
+            keys_dump_enabled: true,
             keys_dump_file: "/tmp/kanudo_lru_keys.dump".to_string(),
         }
     }
