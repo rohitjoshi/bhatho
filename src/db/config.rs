@@ -33,6 +33,7 @@ impl Default for DbManagerConfig {
 pub struct RocksDbConfig {
     pub enabled: bool,
     pub async_write: bool,
+    pub async_write_queue_length: usize,
     pub num_async_writer_threads: usize,
     pub async_writer_threads_sleep_ms: u64,
     pub db_path: String,
@@ -57,6 +58,9 @@ pub struct RocksDbConfig {
     pub enable_statistics: bool,
     pub restore_from_backup_at_startup: bool,
     pub keep_log_file_while_restore: bool,
+    pub point_lookup_block_size_mb: u64,
+    pub use_default_config: bool,
+    pub use_default_block_config: bool,
 }
 
 impl Default for RocksDbConfig {
@@ -64,6 +68,7 @@ impl Default for RocksDbConfig {
         RocksDbConfig {
             enabled: true,
             async_write: true,
+            async_write_queue_length: 5_000_000,
             num_async_writer_threads: 1,
             async_writer_threads_sleep_ms: 250,
             db_path: "/tmp/kanudo_db".to_string(),
@@ -88,6 +93,9 @@ impl Default for RocksDbConfig {
             enable_statistics: true,
             restore_from_backup_at_startup: true,
             keep_log_file_while_restore: true,
+            point_lookup_block_size_mb: 10240,
+            use_default_config: true,
+            use_default_block_config: true,
         }
     }
 }
