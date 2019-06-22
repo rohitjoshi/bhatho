@@ -27,7 +27,6 @@ pub struct Lru {
     id: usize,
     cache: Arc<Mutex<LruCacheVec>>,
     cache_capacity: usize,
-
 }
 
 /// send safe
@@ -43,7 +42,6 @@ impl Clone for Lru {
             id: self.id,
             cache: self.cache.clone(),
             cache_capacity: self.cache_capacity,
-
         }
     }
 }
@@ -54,13 +52,13 @@ impl Lru {
     pub fn new(id: usize, cache_capacity: usize) -> Lru {
         //let hasher = RandomXxHashBuilder::default();
         //let mut hasher = XxHash::with_seed(0);
-//        let mut cache_capacity = cache_capacity;
-//        match cache_capacity.checked_next_power_of_two() {
-//            Some(power_of_two) => {
-//                cache_capacity = power_of_two
-//            }
-//            None => {}
-//        }
+        //        let mut cache_capacity = cache_capacity;
+        //        match cache_capacity.checked_next_power_of_two() {
+        //            Some(power_of_two) => {
+        //                cache_capacity = power_of_two
+        //            }
+        //            None => {}
+        //        }
         let cache = Arc::new(Mutex::new(LruCacheVec::new(cache_capacity)));
         //let cache = Arc::new(Mutex::new(HashMap::<Vec<u8>, Vec<u8>>::with_capacity(cache_capacity)));
         Lru {
@@ -69,7 +67,6 @@ impl Lru {
             cache_capacity,
         }
     }
-
 
     /// get key as str
     #[inline(always)]
@@ -89,7 +86,7 @@ impl Lru {
     pub fn get_str(&self, key: &str) -> Option<String> {
         match self.get(key.as_bytes()) {
             Some(val) => Some(String::from_utf8_lossy(&val).to_string()),
-            None => None
+            None => None,
         }
     }
 
@@ -138,7 +135,6 @@ impl Lru {
         self.cache.lock().len() > 0
     }
 
-
     pub fn export_keys(&self, file: &mut File) -> Result<u64, String> {
         let cache = &self.cache.lock();
         debug!("Total Keys {} in shard:{}", cache.len(), self.id);
@@ -161,8 +157,8 @@ impl Lru {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, thread_rng};
     use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
 
     //use crate::tests::rand::Rng;
     use super::*;
@@ -171,7 +167,6 @@ mod tests {
     fn test_lrucache_put_and_get_large() {
         let capacity = 2000000;
         let mut cache = Lru::new(0, capacity);
-
 
         use std::collections::HashMap;
         let mut data = HashMap::with_capacity(capacity);
