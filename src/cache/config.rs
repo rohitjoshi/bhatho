@@ -18,7 +18,7 @@ impl Default for CacheManagerConfig {
         cache_configs.push(CacheConfig::default());
         CacheManagerConfig { cache_configs }
     }
-    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CacheConfig {
