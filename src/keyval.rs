@@ -10,9 +10,9 @@ use crc16::{State, XMODEM};
 use jumphash;
 use std::hash::Hasher;
 use twox_hash::XxHash;
-
+use std::fmt;
 //key value structure
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct KeyVal {
     pub hash: u64,
     pub key: Vec<u8>,
@@ -20,6 +20,19 @@ pub struct KeyVal {
     pub db_name: Vec<u8>,
     pub skip_db: bool,
     pub skip_cache: bool,
+}
+
+impl fmt::Debug for KeyVal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "KeyVal {{ hash: {}, key: {}, val:{}, db_name:{}, skip_db:{}, skip_cache:{} }}",
+               self.hash,
+               String::from_utf8_lossy(&self.key),
+               String::from_utf8_lossy(&self.val),
+               String::from_utf8_lossy(&self.db_name),
+               self.skip_db,
+               self.skip_cache
+        )
+    }
 }
 
 impl Clone for KeyVal {
