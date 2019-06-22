@@ -48,7 +48,7 @@ impl DbManager {
         let db = if config.rocks_db_config.enabled {
             let rocks_db = RocksDb::new(&config.rocks_db_config, shutdown)?;
             Some(Arc::new(rocks_db))
-        }else {
+        } else {
             None
         };
         let cache = ShardedCache::new(&config.cache_config);
