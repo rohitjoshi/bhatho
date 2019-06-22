@@ -13,12 +13,13 @@ use std::sync::Arc;
 use crate::cache::config::CacheConfig;
 use crate::cache::lru_cache::Lru;
 use crate::keyval::KeyVal;
+use std::fs;
+use std::path::Path;
 
 pub struct ShardedCache {
     pub shards: Arc<Vec<Lru>>,
     config: CacheConfig,
     enabled: bool,
-
 }
 
 //unsafe impl Send for ShardedCache {}
@@ -31,7 +32,6 @@ impl Clone for ShardedCache {
             shards: self.shards.clone(),
             config: self.config.clone(),
             enabled: self.enabled,
-
         }
     }
 }
@@ -61,12 +61,15 @@ impl ShardedCache {
     pub fn new(config: &CacheConfig) -> ShardedCache {
         assert!(config.num_shards > 0);
         let adjust = config.cache_capacity % config.num_shards as usize;
-        let shard_capacity = config.cache_capacity  + adjust / config.num_shards as usize;
+        let shard_capacity = (config.cache_capacity + adjust) / config.num_shards as usize;
 
         assert!(shard_capacity > 0);
         let mut shards: Vec<Lru> = Vec::with_capacity(config.num_shards as usize);
         if config.enabled {
-            info!("cache_capacity:{}, num_shards:{}, shard_capacity: {}", config.cache_capacity, config.num_shards, shard_capacity);
+            info!(
+                "cache_capacity:{}, num_shards:{}, shard_capacity: {}",
+                config.cache_capacity, config.num_shards, shard_capacity
+            );
             for i in 0..config.num_shards {
                 let lru = Lru::new(i, shard_capacity);
                 shards.push(lru);
@@ -79,7 +82,6 @@ impl ShardedCache {
             shards: Arc::new(shards),
             config: config.clone(),
             enabled: config.enabled,
-
         }
     }
 
@@ -164,31 +166,55 @@ impl ShardedCache {
         }
 
         if !self.config.keys_dump_enabled {
-            info!("Exporting lru keys not enabled for export key file :{}", self.config.keys_dump_file);
+            info!(
+                "Exporting lru keys not enabled for export key file :{}",
+                self.config.keys_dump_file
+            );
             return Ok(0);
         }
+
         warn!("This is a blocking operation");
         info!("Exporting keys from the cache");
+
+        let path = Path::new(&self.config.keys_dump_file);
+        //if path doesn't exist, create the directory
+        if !path.exists() {
+            debug!(
+                "Path: {:?} doesn't exist. Creating parent directories",
+                path
+            );
+            if let Some(parent) = path.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    error!(
+                        "Failed to create a directory: {:?} for exporting keys. Error: {:?}",
+                        parent, e
+                    );
+                    return Err(e.to_string());
+                } else {
+                    debug!("Successfully created directory path: {:?}", parent);
+                }
+            }
+        }
         let mut file = match OpenOptions::new()
             .write(true)
             .create(true)
             .open(self.config.keys_dump_file.as_str())
-            {
-                Err(e) => {
-                    error!(
-                        "Failed to open file: {} for exporting keys. Error:{:?}",
-                        self.config.keys_dump_file, e
-                    );
-                    return Err(e.to_string());
-                }
-                Ok(f) => {
-                    info!(
-                        "Successfully opened file: {} for exporting keys",
-                        self.config.keys_dump_file
-                    );
-                    f
-                }
-            };
+        {
+            Err(e) => {
+                error!(
+                    "Failed to open file: {} for exporting keys. Error:{:?}",
+                    self.config.keys_dump_file, e
+                );
+                return Err(e.to_string());
+            }
+            Ok(f) => {
+                info!(
+                    "Successfully opened file: {} for exporting keys",
+                    self.config.keys_dump_file
+                );
+                f
+            }
+        };
         let mut total = 0u64;
         for i in 0..self.shards.len() {
             let count = self.shards[i].export_keys(&mut file)?;
@@ -210,14 +236,13 @@ impl ShardedCache {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     //use crate::tests::rand::Rng;
     extern crate scoped_threadpool;
 
-    use rand::{Rng, thread_rng};
     use rand::distributions::Alphanumeric;
+    use rand::{thread_rng, Rng};
     use scoped_threadpool::Pool;
     use std::collections::HashMap;
 
