@@ -48,7 +48,6 @@ impl Clone for RocksDb {
 }
 
 impl RocksDb {
-
     //1M max
     ///
     /// Create rocks_db_options
@@ -371,6 +370,10 @@ impl RocksDb {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
+        if !self.config.backup_enabled {
+            info!("DB backup not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
             if let Err(e) = backup_engine.create_new_backup(&self.db) {
                 error!(
@@ -406,6 +409,10 @@ impl RocksDb {
     pub fn purge_old_backup(&self, num_backups_to_keep: usize) -> Result<(), String> {
         if !self.enabled {
             debug!("DB not enabled for DB Path: {}", self.config.db_path);
+            return Ok(());
+        }
+        if !self.config.backup_enabled {
+            info!("DB backup not enabled for DB Path: {}", self.config.db_path);
             return Ok(());
         }
         if let Ok(mut backup_engine) = RocksDb::create_backup_engine(&self.config) {
